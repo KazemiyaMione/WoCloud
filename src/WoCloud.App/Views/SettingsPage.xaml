@@ -108,9 +108,11 @@
                     <TextBlock Text="{x:Bind Vm.AccountText, Mode=OneWay}" FontSize="13" TextWrapping="Wrap"/>
 
                     <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button Content="个人资料" Click="EditProfile_Click"/>
+                        <Button Content="修改密码" Click="ChangePassword_Click"/>
+                        <Button Content="清除本地缓存" Click="ClearCache_Click"/>
                         <Button Content="退出登录" Style="{StaticResource AccentButtonStyle}"
                                 Click="Logout_Click"/>
-                        <Button Content="清除本地缓存" Click="ClearCache_Click"/>
                     </StackPanel>
                 </StackPanel>
             </Border>

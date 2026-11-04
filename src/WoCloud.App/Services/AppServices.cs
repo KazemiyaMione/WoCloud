@@ -23,6 +23,7 @@ public static class AppServices
         sc.AddSingleton(session);
         sc.AddSingleton<DispatcherClient>();
         sc.AddSingleton<AuthApi>();
+        sc.AddSingleton<AccountApi>();
         sc.AddSingleton<FileApi>();
         sc.AddSingleton<DownloadClient>();
         sc.AddSingleton<UploadClient>();

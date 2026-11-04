@@ -20,6 +20,7 @@ public static class WoCloudConstants
 
     /// <summary>发送短信验证码（裸 JSON POST，param 为 AES 密文）。</summary>
     public const string SendMessageCodeUrl = BaseUrl + "/api-user/sendMessageCodeBase";
+public const string UpdateHeadUrl = BaseUrl + "/api-user/update/user/head";
 
     /// <summary>扫码登录二维码（裸 JSON POST）。</summary>
     public const string QrCodeGenerateUrl = BaseUrl + "/wohome/open/v1/QRCode/generate";

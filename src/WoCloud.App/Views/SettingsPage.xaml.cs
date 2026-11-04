@@ -67,6 +67,41 @@ public sealed partial class SettingsPage : Page, INotifyPropertyChanged
             Vm.ClearLocalData();
     }
 
+    // ---------------- 账号设置 ----------------
+
+    private async void EditProfile_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new ProfileDialog { XamlRoot = XamlRoot };
+        await dlg.ShowAsync();
+        if (!dlg.Saved) return;
+
+        (App.MainWin as MainWindow)?.RefreshUserChip();
+        await new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "个人资料",
+            Content = "已保存，昵称与头像已同步到账号。",
+            CloseButtonText = "知道了",
+        }.ShowAsync();
+    }
+
+    private async void ChangePassword_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new PasswordDialog { XamlRoot = XamlRoot };
+        await dlg.ShowAsync();
+        if (!dlg.Changed) return;
+
+        await new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "密码已修改",
+            Content = "为保证账号安全，需要重新登录。",
+            CloseButtonText = "去登录",
+        }.ShowAsync();
+
+        await Vm.LogoutAsync();
+    }
+
     // ---------------- 关于 / 免责声明 ----------------
 
     private static async void OpenUrl(string url)
