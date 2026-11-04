@@ -40,12 +40,8 @@
                         </Grid.ColumnDefinitions>
 
                         <Grid>
-                            <FontIcon FontSize="22"
-                                      Visibility="{x:Bind HasThumb, Converter={StaticResource BoolToVisCollapsed}}">
-                                <FontIcon.Glyph>
-                                    <Binding Path="FileType" Converter="{StaticResource FileTypeGlyph}"/>
-                                </FontIcon.Glyph>
-                            </FontIcon>
+                            <FontIcon FontSize="22" Glyph="{x:Bind IconGlyph}"
+                                      Visibility="{x:Bind HasThumb, Converter={StaticResource BoolToVisCollapsed}}"/>
                             <Border Width="36" Height="28" CornerRadius="4" Background="#F0F3F7"
                                     Visibility="{x:Bind HasThumb, Converter={StaticResource BoolToVis}}">
                                 <Image Source="{x:Bind ThumbUrl, Converter={StaticResource UrlToBitmap}}"

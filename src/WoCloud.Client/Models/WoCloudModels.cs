@@ -29,9 +29,13 @@ public class CloudFile
     /// 图标分类：目录单独一类，文件按扩展名细分（服务端 fileType 只有 5 类，区分不出文档类型）。
     /// </summary>
     [JsonIgnore]
-    private string Kind => IsDirectory
+    private string Kind => KindOf(Name, IsDirectory);
+
+    /// <summary>按文件名/是否目录判定图标分类；其他列表（回收站等）复用同一套规则。</summary>
+    public static string KindOf(string name, bool isDirectory) =>
+        isDirectory
         ? "folder"
-        : System.IO.Path.GetExtension(Name).ToLowerInvariant() switch
+        : System.IO.Path.GetExtension(name).ToLowerInvariant() switch
         {
             ".jpg" or ".jpeg" or ".png" or ".gif" or ".bmp" or ".webp" or ".heic" or ".svg" or ".tif" or ".tiff" => "image",
             ".mp4" or ".mkv" or ".mov" or ".avi" or ".wmv" or ".flv" or ".m4v" or ".webm" or ".rmvb" => "video",
@@ -137,6 +141,15 @@ public class RecycleItem
 
     [JsonIgnore] public bool IsDirectory => Type == "0";
     [JsonIgnore] public bool HasThumb => !IsDirectory && !string.IsNullOrEmpty(ThumbUrl);
+    /// <summary>Segoe Fluent Icons 字形，与文件列表保持同一套分类。</summary>
+    [JsonIgnore] public string IconGlyph => CloudFile.KindOf(Name, IsDirectory) switch
+    {
+        "folder" => "\uE8B7",
+        "image" => "\uEB9F",
+        "video" => "\uE714",
+        "audio" => "\uE8D6",
+        _ => "\uE7C3",
+    };
     [JsonIgnore] public string SizeText => IsDirectory ? "" : CloudFile.FormatSize(FileSize);
     [JsonIgnore] public string DeleteTimeText => CloudFile.FormatTime(DeleteTime);
     [JsonIgnore] public string KeepText => KeepDays > 0 ? $"{KeepDays} 天后清除" : "";
