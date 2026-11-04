@@ -67,10 +67,10 @@ public partial class FileListViewModel : ObservableObject
     private string _currentDir = "0";
 
     /// <summary>可选空间（个人云 / 家庭云 / 校园云）。私密空间不在此切换，走左侧独立页。</summary>
+    /// <summary>可选空间（个人云 / 家庭云群组）。spaceType=3 实为微信备份空间，不作切换项。</summary>
     public ObservableCollection<SpaceOption> Spaces { get; } =
     [
         new("个人云", "0", null),
-        new("校园云", "3", null),
     ];
 
     [ObservableProperty] private SpaceOption? _selectedSpace;
@@ -95,13 +95,9 @@ public partial class FileListViewModel : ObservableObject
         try
         {
             var groups = await _misc.GetFamilyGroupsAsync();
-            var insertAt = Spaces.IndexOf(Spaces.First(s => s.SpaceType == "3"));
             foreach (var g in groups?.All ?? [])
                 if (!Spaces.Any(s => s.FamilyId == g.IdText))
-                {
-                    Spaces.Insert(insertAt, new SpaceOption("家庭云 · " + (g.GroupName ?? g.IdText), "1", g.IdText));
-                    insertAt++;
-                }
+                    Spaces.Add(new SpaceOption("家庭云 · " + (g.GroupName ?? g.IdText), "1", g.IdText));
         }
         catch { /* 家庭云不可用时静默降级 */ }
     }
