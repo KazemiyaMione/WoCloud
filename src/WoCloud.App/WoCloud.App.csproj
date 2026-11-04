@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -13,8 +13,8 @@
     <Description>联通云盘第三方桌面客户端（非官方，仅供个人学习使用）</Description>
     <Company>WoCloud contributors</Company>
     <Authors>WoCloud contributors</Authors>
-    <Version>1.0.0</Version>
-    <FileVersion>1.0.0.0</FileVersion>
+    <Version>1.1.0</Version>
+    <FileVersion>1.1.0.0</FileVersion>
     <Copyright>Copyright (c) 2026 WoCloud contributors</Copyright>
     <NeutralLanguage>zh-Hans</NeutralLanguage>
 
