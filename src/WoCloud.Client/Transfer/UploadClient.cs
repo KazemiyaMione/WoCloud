@@ -85,16 +85,39 @@ public sealed class UploadClient : IDisposable
         var fileInfoEnc = CryptoHelper.Encrypt(fileInfoJson, _session.AccessToken!);
 
         long sent = 0;
+        var lastEmit = -1L;
+
+        void Emit(long done, string state)
+        {
+            var clamped = Math.Clamp(done, 0, fi.Length);
+            if (clamped == lastEmit && state != "Completed") return;
+            lastEmit = clamped;
+            Progress?.Invoke(this, new UploadProgressEventArgs(fileName, clamped, fi.Length, state));
+            progress?.Report(fi.Length > 0 ? (double)clamped / fi.Length : 1);
+        }
+
         for (int part = 1; part <= totalChunks; part++)
         {
             ct.ThrowIfCancellationRequested();
             var (start, length) = GetChunkRange(fi.Length, part);
+            var baseSent = sent;
+            var nextEmitAt = baseSent;
+
+            // 片内进度：每读满 256KB 上报一次，避免逐块刷新把 UI 压垮
+            void OnChunkRead(long read)
+            {
+                var done = baseSent + read;
+                if (done < nextEmitAt) return;
+                nextEmitAt = done + 256 * 1024;
+                Emit(done, "Uploading");
+            }
+
             await _gate.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                var (ok, code, msg) = await UploadChunkAsync(endpoint, localPath, fileName, fi.Length,
-                    totalChunks, length, part, directoryId, uniqueId, fileInfoEnc,
-                    psToken ?? _session.PsToken, GuessMimeType(fileName), ct).ConfigureAwait(false);
+                var (ok, code, msg) = await UploadChunkAsync(endpoint, localPath, start, length, fileName,
+                    fi.Length, totalChunks, part, directoryId, uniqueId, fileInfoEnc,
+                    psToken ?? _session.PsToken, GuessMimeType(fileName), OnChunkRead, ct).ConfigureAwait(false);
                 if (!ok)
                     throw new WoCloudException(code ?? "UPLOAD_FAIL",
                         $"服务端拒绝（{code ?? "?"}）：{msg ?? $"分片 {part}/{totalChunks} 上传失败"}");
@@ -104,9 +127,7 @@ public sealed class UploadClient : IDisposable
             {
                 _gate.Release();
             }
-            Progress?.Invoke(this, new UploadProgressEventArgs(fileName, sent, fi.Length,
-                part == totalChunks ? "Completed" : "Uploading"));
-            progress?.Report(fi.Length > 0 ? (double)sent / fi.Length : 1);
+            Emit(sent, part == totalChunks ? "Completed" : "Uploading");
         }
     }
 
@@ -127,9 +148,9 @@ public sealed class UploadClient : IDisposable
          (int)Math.Min(ChunkSizeBytes, size - (part - 1) * (long)ChunkSizeBytes));
 
     private async Task<(bool Ok, string? Code, string? Msg)> UploadChunkAsync(string endpoint,
-        string localPath, string fileName, long fileSize, int totalPart, int partSize, int partIndex,
+        string localPath, long start, int partSize, string fileName, long fileSize, int totalPart, int partIndex,
         string directoryId, string uniqueId, string fileInfoEnc, string? psToken, string mime,
-        CancellationToken ct)
+        Action<long>? onRead, CancellationToken ct)
     {
         string? lastCode = null, lastMsg = null;
         for (int attempt = 0; attempt <= MaxRetries; attempt++)
@@ -137,8 +158,6 @@ public sealed class UploadClient : IDisposable
             try
             {
                 using var form = new MultipartFormDataContent();
-                await using var fs = new FileStream(localPath, FileMode.Open, FileAccess.Read, FileShare.Read, partSize, useAsync: true);
-                fs.Seek((partIndex - 1) * (long)ChunkSizeBytes, SeekOrigin.Begin);
 
                 // 字段顺序必须与浏览器一致：文本字段在前，file 分片最后
                 form.Add(new StringContent(uniqueId), "uniqueId");
@@ -154,7 +173,10 @@ public sealed class UploadClient : IDisposable
                 form.Add(new StringContent(directoryId), "directoryId");
                 form.Add(new StringContent(fileInfoEnc), "fileInfo");
 
-                var fileContent = new StreamContent(fs, partSize);
+                // 必须用 ChunkStream 包一层：直接给 StreamContent 一个定位过的 FileStream，
+                // 内容长度会算成「文件剩余全部字节」，分片就成了整个文件（大视频卡死的根因）
+                var chunk = new ChunkStream(localPath, start, partSize, 81920, onRead);
+                var fileContent = new StreamContent(chunk, 81920);
                 fileContent.Headers.ContentType = new MediaTypeHeaderValue(mime);
                 form.Add(fileContent, "file", fileName);
 

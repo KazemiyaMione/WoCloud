@@ -13,4 +13,8 @@
     <Compile Remove="Class1.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="WoCloud.Client.Tests" />
+  </ItemGroup>
+
 </Project>
