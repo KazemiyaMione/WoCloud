@@ -2,6 +2,7 @@ using System.ComponentModel;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using WoCloud.App.Services;
 using WoCloud.App.ViewModels;
 
 namespace WoCloud.App.Views;
@@ -65,4 +66,25 @@ public sealed partial class SettingsPage : Page, INotifyPropertyChanged
         if (await dlg.ShowAsync() == ContentDialogResult.Primary)
             Vm.ClearLocalData();
     }
+
+    // ---------------- 关于 / 免责声明 ----------------
+
+    private static async void OpenUrl(string url)
+    {
+        try { await Windows.System.Launcher.LaunchUriAsync(new Uri(url)); }
+        catch (Exception e) { System.Diagnostics.Debug.WriteLine($"打开链接失败 {url}: {e.Message}"); }
+    }
+
+    private void OpenRepo_Click(object sender, RoutedEventArgs e) => OpenUrl(AppInfo.RepoUrl);
+
+    private void OpenIssues_Click(object sender, RoutedEventArgs e) => OpenUrl(AppInfo.IssuesUrl);
+
+    private void OpenReleases_Click(object sender, RoutedEventArgs e) => OpenUrl(AppInfo.ReleasesUrl);
+
+    private void OpenLicense_Click(object sender, RoutedEventArgs e) => OpenUrl(AppInfo.LicenseUrl);
+
+    private void OpenNotice_Click(object sender, RoutedEventArgs e) => OpenUrl(AppInfo.NoticeUrl);
+
+    private async void ShowDisclaimer_Click(object sender, RoutedEventArgs e) =>
+        await DisclaimerDialog.ShowAsync(XamlRoot, requireConsent: false);
 }

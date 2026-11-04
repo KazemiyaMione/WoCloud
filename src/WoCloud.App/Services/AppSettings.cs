@@ -29,6 +29,9 @@ public partial class AppSettings : ObservableObject
     /// <summary>上传并发（同时传几个分片）：1-12。服务端按连接限速，提高并发可叠加带宽。</summary>
     [ObservableProperty] private int _uploadConcurrency = 6;
 
+    /// <summary>已同意的免责声明版本；小于当前版本号时会重新弹窗。</summary>
+    [ObservableProperty] private int _disclaimerVersion;
+
     /// <summary>外观主题：0=跟随系统，1=浅色，2=深色。</summary>
     [ObservableProperty] private int _themeMode = 0;
 

@@ -132,6 +132,9 @@ public sealed partial class MainWindow : Window
         Nav.IsPaneVisible = !isLogin;
         Nav.IsPaneToggleButtonVisible = !isLogin;
 
+        // 首次登录进入主界面时先弹免责声明（同意过则不再打扰）
+        if (!isLogin) EnsureDisclaimer();
+
         // 登录页不显示在导航选择中
         if (tag is null)
         {
@@ -176,5 +179,52 @@ public sealed partial class MainWindow : Window
     }
 
     // 退出登录已移入「设置」页（含二次确认）
+
+    // ---------------- 免责声明 ----------------
+
+    private bool _disclaimerBusy;
+    private int _disclaimerRetry;
+
+    /// <summary>首次进入主界面时弹免责声明；不同意直接退出程序。</summary>
+    private async void EnsureDisclaimer()
+    {
+        if (_disclaimerBusy) return;
+
+        var settings = App.Current.Services.GetRequiredService<AppSettings>();
+        if (settings.DisclaimerVersion >= AppInfo.DisclaimerVersion) return;
+
+        var root = ContentFrame.XamlRoot;
+        if (root is null)
+        {
+            // 窗口还没完成首帧布局，稍后再试（最多约 2 秒）
+            if (_disclaimerRetry++ < 20)
+            {
+                ContentFrame.DispatcherQueue.TryEnqueue(async () =>
+                {
+                    await Task.Delay(100);
+                    EnsureDisclaimer();
+                });
+            }
+            return;
+        }
+
+        _disclaimerBusy = true;
+        try
+        {
+            if (await DisclaimerDialog.ShowAsync(root, requireConsent: true))
+            {
+                settings.DisclaimerVersion = AppInfo.DisclaimerVersion;   // 自动落盘
+            }
+            else
+            {
+                Application.Current.Exit();
+            }
+        }
+        finally
+        {
+            _disclaimerBusy = false;
+        }
+    }
+
 }
 

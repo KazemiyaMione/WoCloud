@@ -47,8 +47,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _accountText = "未登录";
     [ObservableProperty] private string _statusText = "";
 
-    public string VersionText { get; } =
-        typeof(SettingsViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
+    public string VersionText => AppInfo.Version;
 
     private readonly WoCloud.Client.Transfer.UploadClient _uploads;
     private readonly WoCloud.Client.Transfer.DownloadClient _downloads;
