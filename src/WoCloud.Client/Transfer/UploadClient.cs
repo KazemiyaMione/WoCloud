@@ -30,10 +30,12 @@ public sealed class UploadClient : IDisposable
     /// <summary>分片大小（设置页可调：8/16/32 MB）。</summary>
     public int ChunkSizeBytes { get; set; } = DefaultChunkSize;
 
+    /// <summary>同时在传的分片数。网关按连接限速，适当提高可线性提升吞吐。</summary>
+    public int Concurrency { get; set; } = MaxConcurrency;
+
     private readonly HttpClient _http;
     private readonly SessionState _session;
     private readonly FileApi _files;
-    private readonly SemaphoreSlim _gate = new(MaxConcurrency, MaxConcurrency);
 
     public event EventHandler<UploadProgressEventArgs>? Progress;
 
@@ -41,7 +43,9 @@ public sealed class UploadClient : IDisposable
     {
         _session = session;
         _files = files;
-        _http = httpClient ?? new HttpClient();
+        // 默认 100 秒对慢速上行太短：8MB 分片在 0.1MB/s 下就会触发超时，
+        // 大文件直接废掉。这里放宽到 10 分钟，真正的取消交给 CancellationToken。
+        _http = httpClient ?? new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
     }
 
     /// <summary>
@@ -84,51 +88,82 @@ public sealed class UploadClient : IDisposable
         });
         var fileInfoEnc = CryptoHelper.Encrypt(fileInfoJson, _session.AccessToken!);
 
-        long sent = 0;
+        long done = 0;              // 已完成分片的字节数（原子累加）
         var lastEmit = -1L;
+        var emitLock = new object();
 
-        void Emit(long done, string state)
+        void Emit(long value, string state)
         {
-            var clamped = Math.Clamp(done, 0, fi.Length);
-            if (clamped == lastEmit && state != "Completed") return;
-            lastEmit = clamped;
+            var clamped = Math.Clamp(value, 0, fi.Length);
+            lock (emitLock)
+            {
+                if (clamped <= lastEmit && state != "Completed") return; // 并发下只前进不后退
+                lastEmit = clamped;
+            }
             Progress?.Invoke(this, new UploadProgressEventArgs(fileName, clamped, fi.Length, state));
             progress?.Report(fi.Length > 0 ? (double)clamped / fi.Length : 1);
         }
 
-        for (int part = 1; part <= totalChunks; part++)
+        // 真并发上传：多个 worker 抢队列里的分片。原实现用信号量包住整个请求，
+        // 实际仍是一片一片串行发，慢速上行时吞吐只有单连接水平。
+        var pending = new System.Collections.Concurrent.ConcurrentQueue<int>(
+            Enumerable.Range(1, totalChunks));
+        using var abort = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var errorLock = new object();
+        Exception? firstError = null;
+
+        async Task WorkerAsync()
         {
-            ct.ThrowIfCancellationRequested();
-            var (start, length) = GetChunkRange(fi.Length, part);
-            var baseSent = sent;
-            var nextEmitAt = baseSent;
-
-            // 片内进度：每读满 256KB 上报一次，避免逐块刷新把 UI 压垮
-            void OnChunkRead(long read)
-            {
-                var done = baseSent + read;
-                if (done < nextEmitAt) return;
-                nextEmitAt = done + 256 * 1024;
-                Emit(done, "Uploading");
-            }
-
-            await _gate.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                var (ok, code, msg) = await UploadChunkAsync(endpoint, localPath, start, length, fileName,
-                    fi.Length, totalChunks, part, directoryId, uniqueId, fileInfoEnc,
-                    psToken ?? _session.PsToken, GuessMimeType(fileName), OnChunkRead, ct).ConfigureAwait(false);
-                if (!ok)
-                    throw new WoCloudException(code ?? "UPLOAD_FAIL",
-                        $"服务端拒绝（{code ?? "?"}）：{msg ?? $"分片 {part}/{totalChunks} 上传失败"}");
-                sent += length;
+                while (!abort.IsCancellationRequested && pending.TryDequeue(out var part))
+                {
+                    var (start, length) = GetChunkRange(fi.Length, part);
+                    var baseSent = Interlocked.Read(ref done);
+                    var nextEmitAt = baseSent;
+
+                    // 片内进度：每读满 256KB 上报一次，避免逐块刷新把 UI 压垮
+                    void OnChunkRead(long read)
+                    {
+                        var now = baseSent + read;
+                        if (now < nextEmitAt) return;
+                        nextEmitAt = now + 256 * 1024;
+                        Emit(now, "Uploading");
+                    }
+
+                    var (ok, code, msg) = await UploadChunkAsync(endpoint, localPath, start, length, fileName,
+                        fi.Length, totalChunks, part, directoryId, uniqueId, fileInfoEnc,
+                        psToken ?? _session.PsToken, GuessMimeType(fileName), OnChunkRead,
+                        abort.Token).ConfigureAwait(false);
+
+                    if (!ok)
+                        throw new WoCloudException(code ?? "UPLOAD_FAIL",
+                            $"服务端拒绝（{code ?? "?"}）：{msg ?? $"分片 {part}/{totalChunks} 上传失败"}");
+
+                    Emit(Interlocked.Add(ref done, length), "Uploading");
+                }
             }
-            finally
+            catch (Exception ex)
             {
-                _gate.Release();
+                lock (errorLock)
+                {
+                    // 取消类异常通常是「别的分片先失败」的连带结果，优先保留真实错误
+                    if (firstError is null ||
+                        (firstError is OperationCanceledException && ex is not OperationCanceledException))
+                        firstError = ex;
+                }
+                abort.Cancel();   // 任一分片失败，其余立即停止，避免继续白传
             }
-            Emit(sent, part == totalChunks ? "Completed" : "Uploading");
         }
+
+        var workers = Enumerable.Range(0, Math.Clamp(Concurrency, 1, Math.Max(1, totalChunks)))
+            .Select(_ => Task.Run(WorkerAsync))
+            .ToArray();
+        await Task.WhenAll(workers).ConfigureAwait(false);
+
+        ct.ThrowIfCancellationRequested();
+        if (firstError is not null) throw firstError;
+        Emit(fi.Length, "Completed");
     }
 
     /// <summary>批量上传（内部顺序执行；每文件内部并发 3 分片）。</summary>
@@ -287,7 +322,6 @@ public sealed class UploadClient : IDisposable
 
     public void Dispose()
     {
-        _gate.Dispose();
         _http.Dispose();
     }
 }
