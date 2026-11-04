@@ -60,7 +60,7 @@ public class CryptoHelperTests
     [Theory]
     [InlineData("1234567890123456", "1234567890123456")]   // 恰好 16
     [InlineData("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "aaaaaaaa-bbbb-4c")] // 截断 16
-    [InlineData("short", "short")]                          // 不足 16
+    [InlineData("short", "short           ")]              // 不足 16：空格右补齐（对齐手机端 ljust(16)）
     public void SuitableKey_TruncatesTo16(string input, string expected)
     {
         var key = System.Text.Encoding.UTF8.GetString(CryptoHelper.SuitableKey(input));

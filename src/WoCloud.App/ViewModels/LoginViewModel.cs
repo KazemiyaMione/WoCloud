@@ -155,6 +155,8 @@ public partial class LoginViewModel : ObservableObject
 
     // ---------- Token 直通 ----------
 
+    [ObservableProperty] private string _appTokenInput = "";
+
     [RelayCommand]
     private void LoginByToken()
     {
@@ -162,6 +164,26 @@ public partial class LoginViewModel : ObservableObject
         if (token.Length < 32) { StatusText = "请粘贴完整的 WoCloud-Web-Token（UUID）"; return; }
         _auth.SetTokenDirect(token);
         OnLoginSucceeded();
+    }
+
+    [RelayCommand]
+    private async Task LoginByAppTokenAsync()
+    {
+        var ecsToken = AppTokenInput.Trim();
+        if (ecsToken.Length < 16) { StatusText = "请粘贴联通 App 的 ecs_token"; return; }
+
+        IsBusy = true; StatusText = "正在兑换云盘登录态…";
+        try
+        {
+            await _auth.LoginByUnicomAppTokenAsync(ecsToken);
+            StatusText = "";
+            OnLoginSucceeded();
+        }
+        catch (Exception e)
+        {
+            StatusText = e.Message;
+        }
+        finally { IsBusy = false; }
     }
 
     // ---------- 私有 ----------

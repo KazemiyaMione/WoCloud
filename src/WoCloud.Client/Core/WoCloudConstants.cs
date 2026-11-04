@@ -22,6 +22,9 @@ public static class WoCloudConstants
     public const string SendMessageCodeUrl = BaseUrl + "/api-user/sendMessageCodeBase";
 public const string UpdateHeadUrl = BaseUrl + "/api-user/update/user/head";
 
+/// <summary>联通手机营业厅 App 票据兑换（App ecs_token → 云盘 ticket）。</summary>
+public const string GetTicketByNativeUrl = "https://m.client.10010.com/edop_ng/getTicketByNative";
+
     /// <summary>扫码登录二维码（裸 JSON POST）。</summary>
     public const string QrCodeGenerateUrl = BaseUrl + "/wohome/open/v1/QRCode/generate";
     public const string QrCodeQueryUrl = BaseUrl + "/wohome/open/v1/QRCode/query";

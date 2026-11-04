@@ -93,6 +93,14 @@
                     <Button Content="使用此 Token 登录" Style="{StaticResource AccentButtonStyle}"
                             HorizontalAlignment="Stretch"
                             Command="{x:Bind Vm.LoginByTokenCommand}"/>
+
+                    <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.6"
+                               Text="也可以粘贴联通手机营业厅 App 的 ecs_token（抓包 m.client.10010.com 可得），客户端会自动兑换云盘登录态。"/>
+                    <TextBox Header="联通 App Token（ecs_token）" PlaceholderText="从联通 App 抓包获取"
+                             Text="{x:Bind Vm.AppTokenInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             FontFamily="Consolas"/>
+                    <Button Content="兑换并登录" HorizontalAlignment="Stretch"
+                            Command="{x:Bind Vm.LoginByAppTokenCommand}"/>
                 </StackPanel>
             </Grid>
 

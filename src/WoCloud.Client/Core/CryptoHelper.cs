@@ -19,9 +19,12 @@ public static class CryptoHelper
         return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 
-    /// <summary>密钥截断：超过 16 字符取前 16 位（AES-128）。</summary>
+    /// <summary>
+    /// 密钥规整（getSuitableKey）：超过 16 字符取前 16 位；不足 16 位用空格右补齐——
+    /// 与手机端 <c>str(token).ljust(16)[:16]</c> 一致（HandheldHallAutoLoginV2 前的空 token 场景）。
+    /// </summary>
     public static byte[] SuitableKey(string secret) =>
-        Encoding.UTF8.GetBytes(secret.Length > 16 ? secret[..16] : secret);
+        Encoding.UTF8.GetBytes(secret.Length >= 16 ? secret[..16] : secret.PadRight(16));
 
     public static string Encrypt(string plainText, string secret, string iv = FixedIv)
     {

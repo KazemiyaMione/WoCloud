@@ -173,6 +173,55 @@ public sealed class AuthApi
     /// <summary>Token 粘贴直通（开发调试）。</summary>
     public void SetTokenDirect(string token, string? phone = null) => _session.SetLogin(token, phone);
 
+    /// <summary>
+    /// 联通手机营业厅 App Token 兑换云盘登录态（手机端免登链路，参数取自青龙脚本逆向）：
+    /// 1. GET m.client.10010.com/edop_ng/getTicketByNative?appId=edop_unicom_d67b3e30&token={ecs_token} → ticket
+    /// 2. wohome dispatcher「HandheldHallAutoLoginV2」，body 明文 {clientId:"1001000003", ticket} → RSP.DATA.token
+    /// 兑换出的 accessToken 即手机端 AES 密钥（前 16 位）。
+    /// </summary>
+    public async Task<string> LoginByUnicomAppTokenAsync(string ecsToken, CancellationToken ct = default)
+    {
+        // 第一步：App ecs_token 换 ticket（需带联通 App 的 UA，否则可能被风控拦截）
+        using var ticketMsg = new HttpRequestMessage(HttpMethod.Get,
+            $"{WoCloudConstants.GetTicketByNativeUrl}?appId=edop_unicom_d67b3e30&token={Uri.EscapeDataString(ecsToken)}");
+        ticketMsg.Headers.TryAddWithoutValidation("User-Agent",
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 unicom{version:iphone_c@12.0301}");
+
+        using var ticketResp = await _http.SendAsync(ticketMsg, ct).ConfigureAwait(false);
+        var ticketText = await ticketResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+
+        string ticket;
+        try
+        {
+            using var doc = JsonDocument.Parse(ticketText);
+            ticket = doc.RootElement.TryGetProperty("ticket", out var t) && t.ValueKind == JsonValueKind.String
+                ? t.GetString() ?? "" : "";
+        }
+        catch (JsonException)
+        {
+            throw new WoCloudException("TICKET_BAD_JSON", $"票据接口返回异常：{ticketText[..Math.Min(120, ticketText.Length)]}");
+        }
+
+        if (ticket.Length == 0)
+            throw new WoCloudException("TICKET_FAIL", "兑换票据失败：ecs_token 无效或已过期");
+
+        // 第二步：ticket 换云盘 accessToken（明文 body，UA 模拟安卓 App）
+        var resp = await _dispatcher.SendRawAsync("HandheldHallAutoLoginV2",
+            new { clientId = "1001000003", ticket },
+            WoCloudConstants.ChannelWohome, SecretType.Token, encrypt: false, ct: ct).ConfigureAwait(false);
+
+        var code = resp.Rsp?.Code ?? "NO_RSP";
+        var token = resp.Rsp?.Data is { } d && d.ValueKind == JsonValueKind.Object &&
+                    d.TryGetProperty("token", out var tk) && tk.ValueKind == JsonValueKind.String
+            ? tk.GetString() : null;
+
+        if (code != "0000" || string.IsNullOrEmpty(token))
+            throw new WoCloudException(code, resp.Rsp?.Desc ?? "App Token 兑换云盘登录态失败");
+
+        _session.SetLogin(token!);
+        return token!;
+    }
+
     /// <summary>退出登录。</summary>
     public async Task LogoutAsync(CancellationToken ct = default)
     {
