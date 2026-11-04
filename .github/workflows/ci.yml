@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+    tags-ignore: ['v*']
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build:
+    name: 构建与测试
+    runs-on: windows-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: 还原协议层与测试
+        run: |
+          dotnet restore src/WoCloud.Client/WoCloud.Client.csproj
+          dotnet restore tests/WoCloud.Client.Tests/WoCloud.Client.Tests.csproj
+
+      - name: 单元测试
+        run: dotnet run --project tests/WoCloud.Client.Tests -c Release --no-restore
+
+      - name: 还原客户端
+        run: dotnet restore src/WoCloud.App/WoCloud.App.csproj -p:Platform=x64
+
+      - name: 编译客户端（x64）
+        run: dotnet build src/WoCloud.App/WoCloud.App.csproj -c Release -p:Platform=x64 --no-restore
