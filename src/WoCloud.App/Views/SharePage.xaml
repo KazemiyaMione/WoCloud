@@ -18,7 +18,7 @@
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <TextBlock Text="我的分享" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center"/>
+            <TextBlock Text="分享管理" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center"/>
             <Button Grid.Column="1" Content="打开分享…" Click="OpenShare_Click"/>
             <Button Grid.Column="2" Content="⟳ 刷新" Click="Refresh_Click"/>
         </Grid>

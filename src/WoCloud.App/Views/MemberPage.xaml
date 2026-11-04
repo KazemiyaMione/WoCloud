@@ -29,34 +29,39 @@
         </Style>
     </Page.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <Grid RowSpacing="14" Padding="0,0,0,24" MaxWidth="1200" HorizontalAlignment="Center">
+    <Grid RowSpacing="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- 标题栏：固定在顶部，不随内容滚动 -->
+        <Grid ColumnSpacing="12" MaxWidth="1200" HorizontalAlignment="Stretch">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Spacing="2">
+                <TextBlock Text="会员空间" FontSize="20" FontWeight="SemiBold"/>
+                <TextBlock Text="存储空间、会员状态与家庭云" FontSize="12" Opacity="0.55"/>
+            </StackPanel>
+            <ProgressRing Grid.Column="1" IsActive="{x:Bind Vm.IsLoading, Mode=OneWay}"
+                          Width="20" Height="20" VerticalAlignment="Center"/>
+            <Button Grid.Column="2" Content="刷新" Command="{x:Bind Vm.RefreshCommand}"
+                    IsEnabled="{x:Bind Vm.IsNotLoading, Mode=OneWay}"/>
+        </Grid>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <Grid RowSpacing="14" Padding="0,0,0,24" MaxWidth="1200" HorizontalAlignment="Center">
 
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- 标题栏 -->
-            <Grid ColumnSpacing="12">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Spacing="2">
-                    <TextBlock Text="账号与会员" FontSize="20" FontWeight="SemiBold"/>
-                    <TextBlock Text="存储空间、会员状态与家庭云" FontSize="12" Opacity="0.55"/>
-                </StackPanel>
-                <ProgressRing Grid.Column="1" IsActive="{x:Bind Vm.IsLoading, Mode=OneWay}"
-                              Width="20" Height="20" VerticalAlignment="Center"/>
-                <Button Grid.Column="2" Content="刷新" Command="{x:Bind Vm.RefreshCommand}"
-                        IsEnabled="{x:Bind Vm.IsNotLoading, Mode=OneWay}"/>
-            </Grid>
-
             <!-- 主体：宽屏两栏，窄屏堆叠 -->
-            <Grid x:Name="Body" Grid.Row="1" ColumnSpacing="16" RowSpacing="16">
+            <Grid x:Name="Body" Grid.Row="0" ColumnSpacing="16" RowSpacing="16">
                 <VisualStateManager.VisualStateGroups>
                     <VisualStateGroup x:Name="WidthStates">
                         <VisualState x:Name="Stacked">
@@ -402,9 +407,10 @@
             </Grid>
 
             <!-- 状态提示 -->
-            <InfoBar Grid.Row="2" IsOpen="{x:Bind Vm.HasStatus, Mode=OneWay}" IsClosable="False"
+            <InfoBar Grid.Row="1" IsOpen="{x:Bind Vm.HasStatus, Mode=OneWay}" IsClosable="False"
                      Severity="Informational" Message="{x:Bind Vm.StatusText, Mode=OneWay}"
                      Visibility="{x:Bind Vm.HasStatus, Mode=OneWay, Converter={StaticResource BoolToVis}}"/>
-        </Grid>
-    </ScrollViewer>
+            </Grid>
+        </ScrollViewer>
+    </Grid>
 </Page>
