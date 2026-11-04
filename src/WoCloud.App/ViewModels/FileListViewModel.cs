@@ -316,36 +316,63 @@ public partial class FileListViewModel : ObservableObject
     /// <summary>最近一次传输的结果文案（页面显示在 InfoBar）。</summary>
     public string LastTransferMessage { get; private set; } = "";
 
-    /// <summary>上传本地文件到当前目录（8MB 分片，并发 3）。</summary>
+    private readonly Microsoft.UI.Dispatching.DispatcherQueue _dq =
+        Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+
+    /// <summary>上传本地文件到当前目录。服务端限速按上传任务计，这里并行传多个文件以叠加吞吐。</summary>
     public async Task UploadAsync(IEnumerable<string> localPaths)
     {
+        var jobs = new List<(TransferItem Item, string Path, string Name, long Length, Progress<double> Progress)>();
         foreach (var path in localPaths)
         {
             var name = Path.GetFileName(path);
             var fi = new FileInfo(path);
             var item = new TransferItem(name, "上传", fi.Length) { State = "上传中" };
             TransferItems.Insert(0, item);
+            // Progress 必须在 UI 线程构造，回调才会被派发回 UI 线程
             var progress = new Progress<double>(p =>
             {
                 item.Sent = (long)(fi.Length * p);
                 item.State = $"上传中 {item.ProgressText}";
             });
+            jobs.Add((item, path, name, fi.Length, progress));
+        }
+        if (jobs.Count == 0) return;
+
+        var parallel = Math.Clamp(_uploads.FileParallelism, 1, jobs.Count);
+        using var gate = new SemaphoreSlim(parallel);
+        var psToken = CurrentSpaceType == "4" ? _session.PsToken : null;
+        var spaceType = CurrentSpaceType;
+        var targetDir = _currentDir;
+
+        var tasks = jobs.Select(j => Task.Run(async () =>
+        {
+            await gate.WaitAsync().ConfigureAwait(false);
             try
             {
-                await _uploads.UploadAsync(path, _currentDir, progress: progress,
-                    psToken: CurrentSpaceType == "4" ? _session.PsToken : null,
-                    spaceType: CurrentSpaceType);
-                item.State = "已完成";
-                LastTransferMessage = $"上传完成：{name}";
+                await _uploads.UploadAsync(j.Path, targetDir, progress: j.Progress,
+                    psToken: psToken, spaceType: spaceType).ConfigureAwait(false);
+                _dq.TryEnqueue(() =>
+                {
+                    j.Item.State = "已完成";
+                    LastTransferMessage = $"上传完成：{j.Name}";
+                    StatusText = LastTransferMessage;
+                });
             }
             catch (Exception e)
             {
                 // 服务端业务码（如 130004 文件夹不存在）会原样带到界面，不再假装成功
-                item.State = "失败：" + e.Message;
-                LastTransferMessage = $"上传失败：{name} — {e.Message}";
+                _dq.TryEnqueue(() =>
+                {
+                    j.Item.State = "失败：" + e.Message;
+                    LastTransferMessage = $"上传失败：{j.Name} — {e.Message}";
+                    StatusText = LastTransferMessage;
+                });
             }
-            StatusText = LastTransferMessage;
-        }
+            finally { gate.Release(); }
+        })).ToArray();
+
+        await Task.WhenAll(tasks).ConfigureAwait(false);
         await LoadAsync();
     }
 
@@ -378,7 +405,7 @@ public partial class FileListViewModel : ObservableObject
         await LoadAsync();
     }
 
-    /// <summary>递归：先建子目录，再上传当前层文件。</summary>
+    /// <summary>递归：先建子目录，再并行上传当前层文件。</summary>
     private async Task<(int Ok, int Fail)> UploadFolderCoreAsync(DirectoryInfo dir, string parentId)
     {
         int ok = 0, fail = 0;
@@ -395,9 +422,10 @@ public partial class FileListViewModel : ObservableObject
             catch { fail++; }
         }
 
-        foreach (var f in dir.GetFiles())
+        var files = dir.GetFiles();
+        var jobs = new List<(TransferItem Item, string Path, long Length, Progress<double> Progress)>();
+        foreach (var file in files)
         {
-            var file = f;
             var item = new TransferItem(file.Name, "上传", file.Length) { State = "上传中" };
             TransferItems.Insert(0, item);
             var progress = new Progress<double>(p =>
@@ -405,20 +433,34 @@ public partial class FileListViewModel : ObservableObject
                 item.Sent = (long)(file.Length * p);
                 item.State = $"上传中 {item.ProgressText}";
             });
+            jobs.Add((item, file.FullName, file.Length, progress));
+        }
+        if (jobs.Count == 0) return (ok, fail);
+
+        var parallel = Math.Clamp(_uploads.FileParallelism, 1, jobs.Count);
+        using var gate = new SemaphoreSlim(parallel);
+        var psToken = CurrentSpaceType == "4" ? _session.PsToken : null;
+        var spaceType = CurrentSpaceType;
+
+        var tasks = jobs.Select(j => Task.Run(async () =>
+        {
+            await gate.WaitAsync().ConfigureAwait(false);
             try
             {
-                await _uploads.UploadAsync(file.FullName, parentId, progress: progress,
-                    psToken: CurrentSpaceType == "4" ? _session.PsToken : null,
-                    spaceType: CurrentSpaceType);
-                item.State = "已完成";
-                ok++;
+                await _uploads.UploadAsync(j.Path, parentId, progress: j.Progress,
+                    psToken: psToken, spaceType: spaceType).ConfigureAwait(false);
+                _dq.TryEnqueue(() => j.Item.State = "已完成");
+                Interlocked.Increment(ref ok);
             }
             catch (Exception e)
             {
-                item.State = "失败：" + e.Message;
-                fail++;
+                _dq.TryEnqueue(() => j.Item.State = "失败：" + e.Message);
+                Interlocked.Increment(ref fail);
             }
-        }
+            finally { gate.Release(); }
+        })).ToArray();
+
+        await Task.WhenAll(tasks).ConfigureAwait(false);
         return (ok, fail);
     }
 

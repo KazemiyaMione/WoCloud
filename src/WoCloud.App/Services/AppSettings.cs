@@ -26,8 +26,11 @@ public partial class AppSettings : ObservableObject
     /// <summary>上传分片大小（MB）：8 / 16 / 32。</summary>
     [ObservableProperty] private int _uploadChunkMb = 8;
 
-    /// <summary>上传并发（同时传几个分片）：1-12。服务端按连接限速，提高并发可叠加带宽。</summary>
-    [ObservableProperty] private int _uploadConcurrency = 6;
+    /// <summary>上传分片并发（同一文件同时传几个分片）：1-16。实测服务端按上传任务整体限速，此项影响不大。</summary>
+    [ObservableProperty] private int _uploadConcurrency = 4;
+
+    /// <summary>同时上传的文件数：1-6。限速按任务计，多文件并行可线性叠加吞吐。</summary>
+    [ObservableProperty] private int _uploadFileParallel = 3;
 
     /// <summary>已同意的免责声明版本；小于当前版本号时会重新弹窗。</summary>
     [ObservableProperty] private int _disclaimerVersion;

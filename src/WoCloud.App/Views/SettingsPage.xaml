@@ -93,10 +93,23 @@
                         <NumberBox Grid.Column="1" Width="140" Minimum="1" Maximum="16" SmallChange="1"
                                    SpinButtonPlacementMode="Compact"
                                    Value="{x:Bind Vm.UploadConcurrencyValue, Mode=TwoWay}"/>
-                        <TextBlock Grid.Column="2" Text="1-16，服务端按连接限速，调大可叠加" FontSize="12" Foreground="#888"
-                                   VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" Text="1-16，同一文件的分片并发（服务端按任务限速，影响不大）"
+                                   FontSize="12" Foreground="#888" VerticalAlignment="Center"/>
                     </Grid>
-                    <TextBlock Text="说明：云端文件名始终使用本地原文件名，上传完成后可在「传输」页查看结果与失败原因。"
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="同时上传文件数" VerticalAlignment="Center" FontSize="13"/>
+                        <NumberBox Grid.Column="1" Width="140" Minimum="1" Maximum="6" SmallChange="1"
+                                   SpinButtonPlacementMode="Compact"
+                                   Value="{x:Bind Vm.UploadFileParallelValue, Mode=TwoWay}"/>
+                        <TextBlock Grid.Column="2" Text="1-6，限速按上传任务计，多文件并行可线性叠加吞吐（实测 2 并行 ≈ 2 倍速）"
+                                   FontSize="12" Foreground="#888" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                    </Grid>
+                    <TextBlock Text="说明：上传优先走手机端网关（hyupload，实测约为网页节点的 2 倍速），失败自动回退。云端文件名始终使用本地原文件名，上传完成后可在「传输」页查看结果与失败原因。"
                                FontSize="11" Foreground="#999" TextWrapping="Wrap"/>
                 </StackPanel>
             </Border>

@@ -30,8 +30,12 @@ public sealed class UploadClient : IDisposable
     /// <summary>分片大小（设置页可调：8/16/32 MB）。</summary>
     public int ChunkSizeBytes { get; set; } = DefaultChunkSize;
 
-    /// <summary>同时在传的分片数。网关按连接限速，适当提高可线性提升吞吐。</summary>
+    /// <summary>同时在传的分片数。实测服务端按「上传任务」整体限速（同一 uniqueId 的分片共享额度），
+    /// 单文件内加大并发无效；真正的提速手段是多文件并行（见 FileParallelism）。</summary>
     public int Concurrency { get; set; } = MaxConcurrency;
+
+    /// <summary>同时上传的文件数。限速按任务计，多文件并行可线性叠加吞吐（实测 2 文件并行 ≈ 2 倍速）。</summary>
+    public int FileParallelism { get; set; } = 3;
 
     private readonly HttpClient _http;
     private readonly SessionState _session;
@@ -69,10 +73,19 @@ public sealed class UploadClient : IDisposable
 
         var zone = await _files.GetZoneInfoAsync(ct).ConfigureAwait(false)
                    ?? throw new InvalidOperationException("获取上传网关失败");
-        var endpoint = (string.IsNullOrEmpty(zone.Url)
-                ? "https://du.smartont.net:8443"
-                : zone.Url.TrimEnd('/'))
-            + "/openapi/client/upload2C";
+
+        // 上传节点选择（实测 2026-11，同账号 1MB 分片计时）：
+        //   hyupload.pan.wo.cn（手机端 App 用的网关）  ~33s
+        //   GetZoneInfo 分配的节点（如 bjupload…32443）~65s（约慢一倍）
+        //   du.smartont.net:8443                       403 已下线
+        // 手机端网关与网页端 upload2C 协议完全兼容（同参数直接 200），故优先走手机端，
+        // 失败时自动回退分配节点；两端存储后端相同（分片可跨节点续传）。
+        var endpoints = new List<string> { "https://hyupload.pan.wo.cn/openapi/client/upload2C" };
+        if (!string.IsNullOrEmpty(zone.Url))
+        {
+            var zoneEndpoint = zone.Url.TrimEnd('/') + "/openapi/client/upload2C";
+            if (!endpoints.Contains(zoneEndpoint)) endpoints.Add(zoneEndpoint);
+        }
 
         var totalChunks = Math.Max((int)Math.Ceiling((double)fi.Length / ChunkSizeBytes), 1);
         // 字段顺序由服务端按位置解析，不能调整：
@@ -131,7 +144,7 @@ public sealed class UploadClient : IDisposable
                         Emit(now, "Uploading");
                     }
 
-                    var (ok, code, msg) = await UploadChunkAsync(endpoint, localPath, start, length, fileName,
+                    var (ok, code, msg) = await UploadChunkAsync(endpoints, localPath, start, length, fileName,
                         fi.Length, totalChunks, part, directoryId, uniqueId, fileInfoEnc,
                         psToken ?? _session.PsToken, GuessMimeType(fileName), OnChunkRead,
                         abort.Token).ConfigureAwait(false);
@@ -187,14 +200,22 @@ public sealed class UploadClient : IDisposable
         ((part - 1) * (long)ChunkSizeBytes,
          (int)Math.Min(ChunkSizeBytes, size - (part - 1) * (long)ChunkSizeBytes));
 
-    private async Task<(bool Ok, string? Code, string? Msg)> UploadChunkAsync(string endpoint,
+    private async Task<(bool Ok, string? Code, string? Msg)> UploadChunkAsync(
+        IReadOnlyList<string> endpoints,
         string localPath, long start, int partSize, string fileName, long fileSize, int totalPart, int partIndex,
         string directoryId, string uniqueId, string fileInfoEnc, string? psToken, string mime,
         Action<long>? onRead, CancellationToken ct)
     {
         string? lastCode = null, lastMsg = null;
-        for (int attempt = 0; attempt <= MaxRetries; attempt++)
+
+        // 逐节点尝试：首选节点（手机端网关）给 1 次重试，失败切下一个节点。
+        // 分片无状态、两端存储后端相同，跨节点续传没有副作用。
+        for (var e = 0; e < endpoints.Count; e++)
         {
+            var endpoint = endpoints[e];
+            var attempts = e == 0 ? MaxRetries + 1 : 1;
+            for (int attempt = 0; attempt < attempts; attempt++)
+            {
             try
             {
                 using var form = new MultipartFormDataContent();
@@ -228,12 +249,13 @@ public sealed class UploadClient : IDisposable
                 if (resp.IsSuccessStatusCode && code == "0000") return (true, code, msg);
                 lastCode = code ?? ((int)resp.StatusCode).ToString();
                 lastMsg = msg;
-                // 4xx/500 属于硬错误，重试没意义
+                // 4xx/500 属于硬错误，重试没意义，换下一个节点
                 if ((int)resp.StatusCode is >= 400 and < 500 or >= 500) break;
             }
-            catch (Exception) when (attempt < MaxRetries && !ct.IsCancellationRequested)
+            catch (Exception) when (attempt < attempts - 1 && !ct.IsCancellationRequested)
             {
                 await Task.Delay(500, ct).ConfigureAwait(false);
+            }
             }
         }
         return (false, lastCode, lastMsg);

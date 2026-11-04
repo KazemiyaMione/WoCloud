@@ -39,6 +39,23 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
+    /// <summary>同时上传的文件数（限速按任务计，多文件并行才提速）。</summary>
+    public double UploadFileParallelValue
+    {
+        get => _settings.UploadFileParallel;
+        set
+        {
+            var v = (int)Math.Round(Math.Clamp(value, 1, 6));
+            if (v == _settings.UploadFileParallel)
+            {
+                OnPropertyChanged();
+                return;
+            }
+            _settings.UploadFileParallel = v;
+            OnPropertyChanged();
+        }
+    }
+
     /// <summary>外观：0 跟随系统 / 1 浅色 / 2 深色。</summary>
     public ObservableCollection<string> ThemeOptions { get; } = ["跟随系统", "浅色", "深色"];
 
@@ -81,6 +98,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         _uploads.ChunkSizeBytes = Math.Max(1, _settings.UploadChunkMb) * 1024 * 1024;
         _uploads.Concurrency = Math.Clamp(_settings.UploadConcurrency, 1, 16);
+        _uploads.FileParallelism = Math.Clamp(_settings.UploadFileParallel, 1, 6);
         _downloads.Concurrency = Math.Clamp(_settings.DownloadConcurrency, 1, 5);
         _downloads.ResumeEnabled = _settings.ResumeDownload;
         WoCloud.App.App.ApplyTheme(_settings.ThemeMode);
