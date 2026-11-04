@@ -40,10 +40,33 @@ public sealed class DownloadClient : IDisposable
 
     /// <summary>
     /// 下载单个文件到目标路径（自动断点续传：已有 .part 文件时从断点 Range 续传）。
+    /// 返回实际落盘的完整路径（正常情况与传入一致；文件名带 Windows 存不了的字符时才有差异）。
     /// </summary>
-    public async Task DownloadAsync(string fid, string targetPath,
+    public async Task<string> DownloadAsync(string fid, string targetPath,
         IProgress<double>? progress = null, CancellationToken ct = default,
         string spaceType = "0", string? familyId = null, string? psToken = null)
+    {
+        var dir = Path.GetDirectoryName(Path.GetFullPath(targetPath))!;
+        var fileName = Path.GetFileName(targetPath);
+
+        try
+        {
+            return await DownloadCoreAsync(fid, dir, fileName, progress, ct, spaceType, familyId, psToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or NotSupportedException &&
+                                   fileName != SanitizeFileName(fileName))
+        {
+            // 云端文件名带 Windows 无法存储的字符（结尾点/空格 → 「拒绝访问」，\ / : * ? " < > | →
+            // NotSupportedException）。正常文件名永远不会走到这里；走到才做最小调整。
+            return await DownloadCoreAsync(fid, dir, SanitizeFileName(fileName), progress, ct, spaceType, familyId, psToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private async Task<string> DownloadCoreAsync(string fid, string dir, string fileName,
+        IProgress<double>? progress, CancellationToken ct,
+        string spaceType, string? familyId, string? psToken)
     {
         var urls = await _files.GetDownloadUrlsAsync([fid], null, spaceType, familyId, psToken, ct)
                        .ConfigureAwait(false)
@@ -51,12 +74,7 @@ public sealed class DownloadClient : IDisposable
         if (urls.Count == 0)
             throw new InvalidOperationException("下载直链列表为空");
         var url = urls[0].DownloadUrl;
-
-        // 云端文件名可能带 Windows 非法字符：结尾的点/空格会让 FileStream 报「拒绝访问」，
-        // 引号/竖线等直接抛 NotSupportedException。统一清洗后再落盘。
-        var dir = Path.GetDirectoryName(Path.GetFullPath(targetPath))!;
-        var fileName = SanitizeFileName(Path.GetFileName(targetPath));
-        targetPath = Path.Combine(dir, fileName);
+        var targetPath = Path.Combine(dir, fileName);
 
         Directory.CreateDirectory(dir);
         var partPath = targetPath + ".part";
@@ -64,6 +82,11 @@ public sealed class DownloadClient : IDisposable
         {
             try { if (File.Exists(partPath)) File.Delete(partPath); } catch { /* 忽略 */ }
         }
+
+        // 残留 .part 若带隐藏/只读属性，FileMode.Create/Append 会直接「拒绝访问」——先归位
+        try { if (File.Exists(partPath)) File.SetAttributes(partPath, FileAttributes.Normal); }
+        catch { /* 属性清不掉就交给下面的兜底 */ }
+
         long existing = File.Exists(partPath) ? new FileInfo(partPath).Length : 0;
 
         // 断点续传：Range 被拒（416/404，通常是 .part 已完整或链接换签）时清空重下
@@ -91,8 +114,21 @@ public sealed class DownloadClient : IDisposable
         var mode = existing > 0 ? FileMode.Append : FileMode.Create;
 
         // 必须先把文件流关掉再 Move，否则 Windows 报「文件被另一进程占用」
+        FileStream fs;
+        try
         {
-            await using var fs = new FileStream(partPath, mode, FileAccess.Write, FileShare.None, ChunkSize, useAsync: true);
+            fs = new FileStream(partPath, mode, FileAccess.Write, FileShare.None, ChunkSize, useAsync: true);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // .part 被别的进程占用或删除挂起：换唯一名兜底，绝不因残留文件让下载失败
+            partPath = Path.Combine(dir, $"{Path.GetFileNameWithoutExtension(fileName)}_{DateTime.Now:HHmmssfff}.part");
+            existing = 0;
+            fs = new FileStream(partPath, FileMode.Create, FileAccess.Write, FileShare.None, ChunkSize, useAsync: true);
+        }
+
+        await using (fs)
+        {
             await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
 
             var buffer = new byte[ChunkSize];
@@ -104,12 +140,24 @@ public sealed class DownloadClient : IDisposable
                 await fs.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
                 received += read;
                 var speed = sw.Elapsed.TotalSeconds > 0.5 ? received / sw.Elapsed.TotalSeconds : 0;
-                Progress?.Invoke(this, new DownloadProgressEventArgs(fid, Path.GetFileName(targetPath), received, total, speed));
+                Progress?.Invoke(this, new DownloadProgressEventArgs(fid, fileName, received, total, speed));
                 progress?.Report(total > 0 ? (double)received / total : 0);
             }
         }
 
-        File.Move(partPath, targetPath, overwrite: true);
+        try
+        {
+            File.Move(partPath, targetPath, overwrite: true);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // 目标文件已存在且只读/隐藏：清属性后重试，成功后 .part 随之消失
+            try { if (File.Exists(targetPath)) File.SetAttributes(targetPath, FileAttributes.Normal); }
+            catch { /* 保持原错误 */ }
+            File.Move(partPath, targetPath, overwrite: true);
+        }
+
+        return targetPath;
     }
 
     /// <summary>批量下载（按 <see cref="Concurrency"/> 并发）。</summary>

@@ -319,10 +319,9 @@ public sealed partial class FilePreviewOverlay : UserControl
         {
             var temp = Path.Combine(Path.GetTempPath(), "WoCloud", "preview");
             Directory.CreateDirectory(temp);
-            // 与 DownloadClient 落盘清洗保持一致，否则文件名带非法字符时打开找不到文件
-            var target = Path.Combine(temp, DownloadClient.SanitizeFileName(Current.Name));
             var downloads = App.Current.Services.GetRequiredService<DownloadClient>();
-            await downloads.DownloadAsync(Current.Fid, target,
+            // DownloadAsync 返回实际落盘路径（文件名带非法字符时会与传入名不同）
+            var target = await downloads.DownloadAsync(Current.Fid, Path.Combine(temp, Current.Name),
                 spaceType: _spaceType, familyId: _familyId, psToken: _psToken);
             var sf = await Windows.Storage.StorageFile.GetFileFromPathAsync(target);
             await Windows.System.Launcher.LaunchFileAsync(sf);
