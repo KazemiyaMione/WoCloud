@@ -137,8 +137,13 @@ public sealed class UploadClient : IDisposable
                         abort.Token).ConfigureAwait(false);
 
                     if (!ok)
+                    {
+                        // 1001 = 登录态失效（在别处重新登录会顶掉当前 token）
+                        if (code == "1001")
+                            throw new WoCloudException(code, "登录已失效，请重新登录后再上传");
                         throw new WoCloudException(code ?? "UPLOAD_FAIL",
                             $"服务端拒绝（{code ?? "?"}）：{msg ?? $"分片 {part}/{totalChunks} 上传失败"}");
+                    }
 
                     Emit(Interlocked.Add(ref done, length), "Uploading");
                 }

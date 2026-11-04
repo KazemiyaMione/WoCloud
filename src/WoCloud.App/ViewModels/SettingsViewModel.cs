@@ -22,6 +22,23 @@ public partial class SettingsViewModel : ObservableObject
     public ObservableCollection<int> ConcurrencyOptions { get; } = [1, 2, 3, 4, 5];
     public ObservableCollection<int> ChunkOptions { get; } = [8, 16, 32];
 
+    /// <summary>上传并发（NumberBox 绑定用 double，写入设置时取整并钳制）。</summary>
+    public double UploadConcurrencyValue
+    {
+        get => _settings.UploadConcurrency;
+        set
+        {
+            var v = (int)Math.Round(Math.Clamp(value, 1, 16));
+            if (v == _settings.UploadConcurrency)
+            {
+                OnPropertyChanged();
+                return;
+            }
+            _settings.UploadConcurrency = v;   // 触发 Apply()
+            OnPropertyChanged();
+        }
+    }
+
     /// <summary>外观：0 跟随系统 / 1 浅色 / 2 深色。</summary>
     public ObservableCollection<string> ThemeOptions { get; } = ["跟随系统", "浅色", "深色"];
 
@@ -64,6 +81,7 @@ public partial class SettingsViewModel : ObservableObject
     private void Apply()
     {
         _uploads.ChunkSizeBytes = Math.Max(1, _settings.UploadChunkMb) * 1024 * 1024;
+        _uploads.Concurrency = Math.Clamp(_settings.UploadConcurrency, 1, 16);
         _downloads.Concurrency = Math.Clamp(_settings.DownloadConcurrency, 1, 5);
         _downloads.ResumeEnabled = _settings.ResumeDownload;
         WoCloud.App.App.ApplyTheme(_settings.ThemeMode);

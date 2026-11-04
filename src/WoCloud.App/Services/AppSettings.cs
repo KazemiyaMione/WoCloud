@@ -26,6 +26,9 @@ public partial class AppSettings : ObservableObject
     /// <summary>上传分片大小（MB）：8 / 16 / 32。</summary>
     [ObservableProperty] private int _uploadChunkMb = 8;
 
+    /// <summary>上传并发（同时传几个分片）：1-12。服务端按连接限速，提高并发可叠加带宽。</summary>
+    [ObservableProperty] private int _uploadConcurrency = 6;
+
     /// <summary>外观主题：0=跟随系统，1=浅色，2=深色。</summary>
     [ObservableProperty] private int _themeMode = 0;
 
