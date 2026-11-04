@@ -29,8 +29,40 @@ public sealed partial class FileListPage : Page, System.ComponentModel.INotifyPr
 
     private async void Space_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if ((sender as ComboBox)?.SelectedItem is SpaceOption space && space != Vm.SelectedSpace)
-            await Vm.SwitchSpaceAsync(space);
+        var cb = sender as ComboBox;
+        if (cb?.SelectedItem is not SpaceOption space || space == Vm.SelectedSpace) return;
+
+        // 私密空间需先解锁；取消解锁则回退到原空间
+        if (space.SpaceType == "4" && !Vm.IsPrivateUnlocked)
+        {
+            var pwd = await PromptPrivatePasswordAsync();
+            if (pwd is null) { cb.SelectedItem = Vm.SelectedSpace; return; }
+            var err = await Vm.UnlockPrivateAsync(pwd);
+            if (err is not null)
+            {
+                Vm.StatusText = "私密空间解锁失败：" + err;
+                cb.SelectedItem = Vm.SelectedSpace;
+                return;
+            }
+        }
+        await Vm.SwitchSpaceAsync(space);
+    }
+
+    /// <summary>私密空间密码输入框；取消返回 null。</summary>
+    private async Task<string?> PromptPrivatePasswordAsync()
+    {
+        var box = new PasswordBox { PlaceholderText = "私密空间密码" };
+        var dlg = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "解锁私密空间",
+            Content = box,
+            PrimaryButtonText = "解锁",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        if (await dlg.ShowAsync() != ContentDialogResult.Primary) return null;
+        return box.Password;
     }
 
     public string NewFolderName { get; set; } = "新建文件夹";
@@ -194,6 +226,23 @@ public sealed partial class FileListPage : Page, System.ComponentModel.INotifyPr
         await Vm.LoadAsync();
     }
 
+    /// <summary>移出私密空间（右键菜单，仅在私密空间视图出现）。</summary>
+    private async void MoveOutPrivate_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm.SelectedFile is not { } file) return;
+        var dlg = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "移出私密空间",
+            Content = $"确定把「{file.Name}」移出到「个人云」根目录吗？",
+            PrimaryButtonText = "移出",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        if (await dlg.ShowAsync() != ContentDialogResult.Primary) return;
+        await Vm.MoveOutOfPrivateAsync(file);
+    }
+
     private async void Move_Click(object sender, RoutedEventArgs e) => await MoveOrCopyAsync(false);
 
     private async void Copy_Click(object sender, RoutedEventArgs e) => await MoveOrCopyAsync(true);
@@ -210,6 +259,11 @@ public sealed partial class FileListPage : Page, System.ComponentModel.INotifyPr
         if ((sender as FrameworkElement)?.DataContext is not CloudFile file) return;
         Vm.SelectedFile = file;
         FileList.SelectedItem = file;
+
+        // 私密空间里只显示「移出」，其他空间显示「移入」
+        var isPrivate = Vm.IsPrivateSpace;
+        MoveInPrivateItem.Visibility = isPrivate ? Visibility.Collapsed : Visibility.Visible;
+        MoveOutPrivateItem.Visibility = isPrivate ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>选择目标目录后移动/复制。</summary>

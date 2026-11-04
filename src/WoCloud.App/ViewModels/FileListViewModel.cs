@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using WoCloud.Client.Files;
 using WoCloud.Client.Models;
 using WoCloud.Client.Share;
+using WoCloud.Client.Space;
 using WoCloud.Client.Transfer;
 
 namespace WoCloud.App.ViewModels;
@@ -66,17 +67,22 @@ public partial class FileListViewModel : ObservableObject
 
     private string _currentDir = "0";
 
-    /// <summary>可选空间（个人云 + 我的家庭云）。</summary>
+    /// <summary>可选空间（个人云 / 家庭云 / 校园云 / 私密空间）。</summary>
     public ObservableCollection<SpaceOption> Spaces { get; } =
-        [new SpaceOption("个人云", "0", null)];
+    [
+        new("个人云", "0", null),
+        new("校园云", "3", null),
+        new("私密空间", "4", null),
+    ];
 
     [ObservableProperty] private SpaceOption? _selectedSpace;
 
     private readonly WoCloud.Client.Core.SessionState _session;
+    private readonly PrivateSpaceApi _privateSpace;
 
     public FileListViewModel(FileApi files, DownloadClient downloads, UploadClient uploads,
         ShareApi shares, WoCloud.Client.Misc.MiscApi misc,
-        WoCloud.Client.Core.SessionState session)
+        WoCloud.Client.Core.SessionState session, PrivateSpaceApi privateSpace)
     {
         _files = files;
         _downloads = downloads;
@@ -84,22 +90,45 @@ public partial class FileListViewModel : ObservableObject
         _shares = shares;
         _misc = misc;
         _session = session;
+        _privateSpace = privateSpace;
     }
 
-    /// <summary>加载家庭云群组到空间下拉框。</summary>
+    /// <summary>加载家庭云群组到空间下拉框（插在校园云之前，私密空间保持在末尾）。</summary>
     public async Task LoadSpacesAsync()
     {
         try
         {
             var groups = await _misc.GetFamilyGroupsAsync();
+            var insertAt = Spaces.IndexOf(Spaces.First(s => s.SpaceType == "3"));
             foreach (var g in groups?.All ?? [])
                 if (!Spaces.Any(s => s.FamilyId == g.IdText))
-                    Spaces.Add(new SpaceOption("家庭云 · " + (g.GroupName ?? g.IdText), "1", g.IdText));
+                {
+                    Spaces.Insert(insertAt, new SpaceOption("家庭云 · " + (g.GroupName ?? g.IdText), "1", g.IdText));
+                    insertAt++;
+                }
         }
-        catch { /* 家庭云不可用时静默降级为仅个人云 */ }
+        catch { /* 家庭云不可用时静默降级 */ }
     }
 
-    /// <summary>切换空间（个人云 / 家庭云）。</summary>
+    /// <summary>当前是否在私密空间视图。</summary>
+    public bool IsPrivateSpace => CurrentSpaceType == "4";
+
+    /// <summary>私密空间是否已解锁（本地持有 psToken）。</summary>
+    public bool IsPrivateUnlocked => !string.IsNullOrEmpty(_session.PsToken);
+
+    /// <summary>解锁私密空间；失败返回错误信息，成功返回 null。</summary>
+    public async Task<string?> UnlockPrivateAsync(string password)
+    {
+        try
+        {
+            var r = await _privateSpace.LoginAsync(password);
+            if (r is { IsPass: "1", PsToken.Length: > 0 }) return null;
+            return r?.Desc is { Length: > 0 } d ? d : "密码错误";
+        }
+        catch (Exception e) { return e.Message; }
+    }
+
+    /// <summary>切换空间（个人云 / 家庭云 / 校园云 / 私密空间）。</summary>
     public async Task SwitchSpaceAsync(SpaceOption? space)
     {
         if (space is null) return;
@@ -107,7 +136,7 @@ public partial class FileListViewModel : ObservableObject
         _currentDir = "0";
         Category = "all";
         Breadcrumbs.Clear();
-        Breadcrumbs.Add(new CrumbNode("0", space.SpaceType == "1" ? space.Name : "全部文件"));
+        Breadcrumbs.Add(new CrumbNode("0", space.Name));
         await LoadAsync();
     }
 
@@ -464,12 +493,12 @@ public partial class FileListViewModel : ObservableObject
         return (ok, fail);
     }
 
-    /// <summary>可选的移动/复制目标目录（根目录 + 一级目录）。</summary>
+    /// <summary>可选的移动/复制目标目录（根目录 + 一级目录；随当前空间走）。</summary>
     public async Task<List<CloudDirectory>> GetDirectoryChoicesAsync()
     {
         try
         {
-            var r = await _files.ListDirectoriesAsync();
+            var r = await _files.ListDirectoriesAsync(CurrentSpaceType);
             return r?.Directorys ?? [];
         }
         catch (Exception e)
@@ -484,15 +513,17 @@ public partial class FileListViewModel : ObservableObject
     {
         try
         {
+            // 同空间内移动/复制；跨空间（如私密→个人）请用「移出私密空间」
+            var st = CurrentSpaceType;
             if (copy)
             {
-                if (file.IsDirectory) await _files.CopyAsync(null, [file.Id], targetDirId);
-                else await _files.CopyAsync([file.Id], null, targetDirId);
+                if (file.IsDirectory) await _files.CopyAsync(null, [file.Id], targetDirId, st, st);
+                else await _files.CopyAsync([file.Id], null, targetDirId, st, st);
             }
             else
             {
-                if (file.IsDirectory) await _files.MoveAsync(null, [file.Id], targetDirId);
-                else await _files.MoveAsync([file.Id], null, targetDirId);
+                if (file.IsDirectory) await _files.MoveAsync(null, [file.Id], targetDirId, st, st);
+                else await _files.MoveAsync([file.Id], null, targetDirId, st, st);
             }
             await LoadAsync();
             StatusText = copy ? "复制成功" : "移动成功";
@@ -501,6 +532,19 @@ public partial class FileListViewModel : ObservableObject
         {
             StatusText = (copy ? "复制失败：" : "移动失败：") + e.Message;
         }
+    }
+
+    /// <summary>移出私密空间到个人云根目录（MoveInOrOutPrivateSpace moveType=1）。</summary>
+    public async Task MoveOutOfPrivateAsync(CloudFile file)
+    {
+        try
+        {
+            if (file.IsDirectory) await _privateSpace.MoveOutAsync(null, [file.Id]);
+            else await _privateSpace.MoveOutAsync([file.Id], null);
+            StatusText = "已移出到「个人云」根目录";
+            await LoadAsync();
+        }
+        catch (Exception e) { StatusText = "移出失败：" + e.Message; }
     }
 
     /// <summary>创建分享（默认 7 天、系统提取码；fileIds 为文件 id 逗号串）。</summary>
