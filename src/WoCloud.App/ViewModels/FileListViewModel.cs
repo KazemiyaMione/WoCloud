@@ -254,8 +254,11 @@ public partial class FileListViewModel : ObservableObject
         finally { IsLoading = false; }
     }
 
-    /// <summary>当前空间类型（0 个人云 / 1 家庭云）。</summary>
+    /// <summary>当前空间类型（0 个人云 / 1 家庭云 / 3 校园云）。</summary>
     private string CurrentSpaceType => SelectedSpace?.SpaceType ?? "0";
+
+    /// <summary>家庭云群组 id（仅家庭云视图非空）。家庭云所有接口缺它直接 500。</summary>
+    private string? CurrentFamilyId => CurrentSpaceType == "1" ? SelectedSpace?.FamilyId : null;
 
     [RelayCommand]
     private async Task NewFolderAsync(string? name)
@@ -263,7 +266,7 @@ public partial class FileListViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(name)) return;
         try
         {
-            await _files.CreateDirectoryAsync(name.Trim(), _currentDir, CurrentSpaceType);
+            await _files.CreateDirectoryAsync(name.Trim(), _currentDir, CurrentSpaceType, CurrentFamilyId);
             await LoadAsync();
         }
         catch (Exception e) { StatusText = e.Message; }
@@ -286,9 +289,9 @@ public partial class FileListViewModel : ObservableObject
         try
         {
             if (file.IsDirectory)
-                await _files.DeleteAsync(dirIds: [file.Id], spaceType: CurrentSpaceType);
+                await _files.DeleteAsync(dirIds: [file.Id], spaceType: CurrentSpaceType, familyId: CurrentFamilyId);
             else
-                await _files.DeleteAsync(fileIds: [file.Id], spaceType: CurrentSpaceType);
+                await _files.DeleteAsync(fileIds: [file.Id], spaceType: CurrentSpaceType, familyId: CurrentFamilyId);
             await LoadAsync();
         }
         catch (Exception e) { StatusText = "删除失败：" + e.Message; }
@@ -350,6 +353,7 @@ public partial class FileListViewModel : ObservableObject
         using var gate = new SemaphoreSlim(parallel);
         var psToken = CurrentSpaceType == "4" ? _session.PsToken : null;
         var spaceType = CurrentSpaceType;
+        var familyId = CurrentFamilyId;
         var targetDir = _currentDir;
 
         var tasks = jobs.Select(j => Task.Run(async () =>
@@ -358,7 +362,7 @@ public partial class FileListViewModel : ObservableObject
             try
             {
                 await _uploads.UploadAsync(j.Path, targetDir, progress: j.Progress,
-                    psToken: psToken, spaceType: spaceType).ConfigureAwait(false);
+                    psToken: psToken, spaceType: spaceType, familyId: familyId).ConfigureAwait(false);
                 _dq.TryEnqueue(() =>
                 {
                     j.Item.State = "已完成";
@@ -393,7 +397,7 @@ public partial class FileListViewModel : ObservableObject
         StatusText = $"正在创建目录：{root.Name}";
         try
         {
-            var created = await _files.CreateDirectoryAsync(root.Name, _currentDir, CurrentSpaceType);
+            var created = await _files.CreateDirectoryAsync(root.Name, _currentDir, CurrentSpaceType, CurrentFamilyId);
             if (string.IsNullOrEmpty(created?.Id))
             {
                 StatusText = "创建目录失败：" + root.Name;
@@ -421,7 +425,7 @@ public partial class FileListViewModel : ObservableObject
         {
             try
             {
-                var child = await _files.CreateDirectoryAsync(sub.Name, parentId, CurrentSpaceType);
+                var child = await _files.CreateDirectoryAsync(sub.Name, parentId, CurrentSpaceType, CurrentFamilyId);
                 if (string.IsNullOrEmpty(child?.Id)) { fail++; continue; }
                 var r = await UploadFolderCoreAsync(sub, child.Id);
                 ok += r.Ok;
@@ -449,6 +453,7 @@ public partial class FileListViewModel : ObservableObject
         using var gate = new SemaphoreSlim(parallel);
         var psToken = CurrentSpaceType == "4" ? _session.PsToken : null;
         var spaceType = CurrentSpaceType;
+        var familyId = CurrentFamilyId;
 
         var tasks = jobs.Select(j => Task.Run(async () =>
         {
@@ -456,7 +461,7 @@ public partial class FileListViewModel : ObservableObject
             try
             {
                 await _uploads.UploadAsync(j.Path, parentId, progress: j.Progress,
-                    psToken: psToken, spaceType: spaceType).ConfigureAwait(false);
+                    psToken: psToken, spaceType: spaceType, familyId: familyId).ConfigureAwait(false);
                 _dq.TryEnqueue(() => j.Item.State = "已完成");
                 Interlocked.Increment(ref ok);
             }
@@ -473,13 +478,23 @@ public partial class FileListViewModel : ObservableObject
         return (ok, fail);
     }
 
-    /// <summary>可选的移动/复制目标目录（根目录 + 一级目录；随当前空间走）。</summary>
+    /// <summary>可选的移动/复制目标目录（根目录 + 一级目录；随当前空间走）。
+    /// 家庭云的 QueryDirectorys 返回 120002（实测），改用列根目录取子目录。</summary>
     public async Task<List<CloudDirectory>> GetDirectoryChoicesAsync()
     {
         try
         {
-            var r = await _files.ListDirectoriesAsync(CurrentSpaceType);
-            return r?.Directorys ?? [];
+            if (CurrentSpaceType == "1")
+            {
+                var r = await _files.ListAsync("0", spaceType: "1", familyId: SelectedSpace?.FamilyId);
+                return (r?.Files ?? []).Where(f => f.IsDirectory).Select(f => new CloudDirectory
+                {
+                    Id = f.Id,
+                    DirectoryName = f.Name,
+                }).ToList();
+            }
+            var d = await _files.ListDirectoriesAsync(CurrentSpaceType);
+            return d?.Directorys ?? [];
         }
         catch (Exception e)
         {
@@ -495,15 +510,16 @@ public partial class FileListViewModel : ObservableObject
         {
             // 同空间内移动/复制；跨空间（如私密→个人）请用「移出私密空间」
             var st = CurrentSpaceType;
+            var fid = CurrentFamilyId;
             if (copy)
             {
-                if (file.IsDirectory) await _files.CopyAsync(null, [file.Id], targetDirId, st, st);
-                else await _files.CopyAsync([file.Id], null, targetDirId, st, st);
+                if (file.IsDirectory) await _files.CopyAsync(null, [file.Id], targetDirId, st, st, fid);
+                else await _files.CopyAsync([file.Id], null, targetDirId, st, st, fid);
             }
             else
             {
-                if (file.IsDirectory) await _files.MoveAsync(null, [file.Id], targetDirId, st, st);
-                else await _files.MoveAsync([file.Id], null, targetDirId, st, st);
+                if (file.IsDirectory) await _files.MoveAsync(null, [file.Id], targetDirId, st, st, fid);
+                else await _files.MoveAsync([file.Id], null, targetDirId, st, st, fid);
             }
             await LoadAsync();
             StatusText = copy ? "复制成功" : "移动成功";

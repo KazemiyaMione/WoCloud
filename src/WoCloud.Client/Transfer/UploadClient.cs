@@ -62,7 +62,7 @@ public sealed class UploadClient : IDisposable
     public async Task UploadAsync(string localPath, string directoryId,
         string? uniqueId = null, string? fileType = null,
         IProgress<double>? progress = null, CancellationToken ct = default,
-        string? psToken = null, string spaceType = "0")
+        string? psToken = null, string spaceType = "0", string? familyId = null)
     {
         if (!_session.IsLoggedIn) throw new InvalidOperationException("未登录");
         var fi = new FileInfo(localPath) ?? throw new FileNotFoundException(localPath);
@@ -90,15 +90,18 @@ public sealed class UploadClient : IDisposable
         var totalChunks = Math.Max((int)Math.Ceiling((double)fi.Length / ChunkSizeBytes), 1);
         // 字段顺序由服务端按位置解析，不能调整：
         // {"spaceType":"0","directoryId":"0","batchNo":"<32位>","fileName":"x.png","fileSize":123,"fileType":"1"}
-        var fileInfoJson = System.Text.Json.JsonSerializer.Serialize(new
+        // 家庭云（spaceType=1）必须带 familyId，缺失服务端直接 HTTP 500（2026-11 实测）
+        var fileInfoObj = new Dictionary<string, object>
         {
-            spaceType,
-            directoryId,
-            batchNo,
-            fileName,
-            fileSize = fi.Length,
-            fileType,
-        });
+            ["spaceType"] = spaceType,
+            ["directoryId"] = directoryId,
+            ["batchNo"] = batchNo,
+            ["fileName"] = fileName,
+            ["fileSize"] = fi.Length,
+            ["fileType"] = fileType,
+        };
+        if (familyId is not null) fileInfoObj["familyId"] = familyId;
+        var fileInfoJson = System.Text.Json.JsonSerializer.Serialize(fileInfoObj);
         var fileInfoEnc = CryptoHelper.Encrypt(fileInfoJson, _session.AccessToken!);
 
         long done = 0;              // 已完成分片的字节数（原子累加）

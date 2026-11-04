@@ -108,13 +108,14 @@ public sealed class FileApi
     public Task<UploadLogResult?> QueryUploadLogAsync(CancellationToken ct = default) =>
         _dispatcher.CallAsync<UploadLogResult>("QueryUploadLog", new { }, ct: ct);
 
-    /// <summary>左侧目录树（返回 {directorys}）。</summary>
-    public Task<QueryDirectorysResult?> ListDirectoriesAsync(string spaceType = "0", CancellationToken ct = default) =>
-        _dispatcher.CallAsync<QueryDirectorysResult>("QueryDirectorys", new
-        {
-            clientId = ClientId,
-            spaceType,
-        }, ct: ct);
+    /// <summary>左侧目录树（返回 {directorys}）。家庭云实测 120002，需改用 ListAsync 取根目录。</summary>
+    public Task<QueryDirectorysResult?> ListDirectoriesAsync(string spaceType = "0",
+        string? familyId = null, CancellationToken ct = default)
+    {
+        var param = new Dictionary<string, object> { ["clientId"] = ClientId, ["spaceType"] = spaceType };
+        if (familyId is not null) param["familyId"] = familyId;
+        return _dispatcher.CallAsync<QueryDirectorysResult>("QueryDirectorys", param, ct: ct);
+    }
 
     /// <summary>
     /// 全局搜索（实测参数）：{clientId, searchType, keyWord, pageNo, pageSize}。
@@ -132,16 +133,20 @@ public sealed class FileApi
             pageSize,
         }, ct: ct);
 
-    /// <summary>新建目录，DATA 返回 {id}。</summary>
+    /// <summary>新建目录，DATA 返回 {id}。家庭云必须带 familyId（实测缺失直接 500）。</summary>
     public Task<CreateDirectoryResult?> CreateDirectoryAsync(string directoryName, string parentDirectoryId,
-        string spaceType = "0", CancellationToken ct = default) =>
-        _dispatcher.CallAsync<CreateDirectoryResult>("CreateDirectory", new
+        string spaceType = "0", string? familyId = null, CancellationToken ct = default)
+    {
+        var param = new Dictionary<string, object>
         {
-            clientId = ClientId,
-            directoryName,
-            parentDirectoryId,
-            spaceType,
-        }, ct: ct);
+            ["clientId"] = ClientId,
+            ["directoryName"] = directoryName,
+            ["parentDirectoryId"] = parentDirectoryId,
+            ["spaceType"] = spaceType,
+        };
+        if (familyId is not null) param["familyId"] = familyId;
+        return _dispatcher.CallAsync<CreateDirectoryResult>("CreateDirectory", param, ct: ct);
+    }
 
     /// <summary>重命名文件或目录：{clientId, spaceType, type, fileType, id, name}。</summary>
     public Task RenameAsync(string id, string newName, int type, string fileType = "",
@@ -156,48 +161,59 @@ public sealed class FileApi
             name = newName,
         }, ct: ct);
 
-    /// <summary>删除：目录走 dirList，文件走 fidList（均传 id 值）。</summary>
+    /// <summary>删除：目录走 dirList，文件走 fidList（均传 id 值）。家庭云需带 familyId。</summary>
     public Task DeleteAsync(IEnumerable<string>? dirIds = null, IEnumerable<string>? fileIds = null,
-        string spaceType = "0", CancellationToken ct = default) =>
-        // 实测：目录走 dirList，文件走 fileList（旧写的 fidList 会返回 1000 参数错误）
-        _dispatcher.CallAsync<object>("DeleteFile", new
+        string spaceType = "0", string? familyId = null, CancellationToken ct = default)
+    {
+        var param = new Dictionary<string, object>
         {
-            clientId = ClientId,
-            spaceType,
-            dirList = dirIds?.ToList() ?? [],
-            fileList = fileIds?.ToList() ?? [],
-        }, ct: ct);
+            ["clientId"] = ClientId,
+            ["spaceType"] = spaceType,
+            ["dirList"] = dirIds?.ToList() ?? [],
+            ["fileList"] = fileIds?.ToList() ?? [],
+        };
+        if (familyId is not null) param["familyId"] = familyId;
+        return _dispatcher.CallAsync<object>("DeleteFile", param, ct: ct);
+    }
 
     /// <summary>
     /// 移动：{clientId, targetDirId, sourceType, targetType, dirList, fileList, secret:false}（实测通过）。
     /// 注意 <c>secret</c> 是参数内的字段，不影响传输加密。
     /// </summary>
     public Task MoveAsync(IEnumerable<string>? fileIds, IEnumerable<string>? dirIds, string targetDirId,
-        string sourceType = "0", string targetType = "0", CancellationToken ct = default) =>
-        _dispatcher.CallAsync<object>("MoveFile", new
+        string sourceType = "0", string targetType = "0", string? familyId = null, CancellationToken ct = default)
+    {
+        var param = new Dictionary<string, object>
         {
-            clientId = ClientId,
-            targetDirId,
-            sourceType,
-            targetType,
-            dirList = dirIds?.ToList() ?? [],
-            fileList = fileIds?.ToList() ?? [],
-            secret = false,
-        }, ct: ct);
+            ["clientId"] = ClientId,
+            ["targetDirId"] = targetDirId,
+            ["sourceType"] = sourceType,
+            ["targetType"] = targetType,
+            ["dirList"] = dirIds?.ToList() ?? [],
+            ["fileList"] = fileIds?.ToList() ?? [],
+            ["secret"] = false,
+        };
+        if (familyId is not null) param["familyId"] = familyId;
+        return _dispatcher.CallAsync<object>("MoveFile", param, ct: ct);
+    }
 
-    /// <summary>复制：与移动同构（实测通过）。</summary>
+    /// <summary>复制：与移动同构（实测通过）。家庭云需带 familyId。</summary>
     public Task CopyAsync(IEnumerable<string>? fileIds, IEnumerable<string>? dirIds, string targetDirId,
-        string sourceType = "0", string targetType = "0", CancellationToken ct = default) =>
-        _dispatcher.CallAsync<object>("CopyFile", new
+        string sourceType = "0", string targetType = "0", string? familyId = null, CancellationToken ct = default)
+    {
+        var param = new Dictionary<string, object>
         {
-            clientId = ClientId,
-            targetDirId,
-            sourceType,
-            targetType,
-            dirList = dirIds?.ToList() ?? [],
-            fileList = fileIds?.ToList() ?? [],
-            secret = false,
-        }, ct: ct);
+            ["clientId"] = ClientId,
+            ["targetDirId"] = targetDirId,
+            ["sourceType"] = sourceType,
+            ["targetType"] = targetType,
+            ["dirList"] = dirIds?.ToList() ?? [],
+            ["fileList"] = fileIds?.ToList() ?? [],
+            ["secret"] = false,
+        };
+        if (familyId is not null) param["familyId"] = familyId;
+        return _dispatcher.CallAsync<object>("CopyFile", param, ct: ct);
+    }
 
     /// <summary>
     /// 批量获取下载直链（必须传 fid，不是 id）。目录可走 dirList 由服务端打包。

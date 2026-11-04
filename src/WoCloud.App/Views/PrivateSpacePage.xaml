@@ -88,7 +88,7 @@
                   Visibility="{x:Bind Vm.IsUnlocked, Mode=OneWay, Converter={StaticResource BoolToVis}}">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="m:CloudFile" xmlns:m="using:WoCloud.Client.Models">
-                    <Grid ColumnSpacing="12" Padding="8,6">
+                    <Grid ColumnSpacing="12" Padding="8,6" RightTapped="Item_RightTapped">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="40"/>
                             <ColumnDefinition Width="*"/>

@@ -51,6 +51,13 @@ public sealed partial class PrivateSpacePage : Page
         if (e.Key == Windows.System.VirtualKey.Enter) await Vm.UnlockAsync();
     }
 
+    /// <summary>右键不会改变 ListView 选中项，必须手动同步，否则右键菜单操作的是旧选中项。</summary>
+    private void Item_RightTapped(object sender, Microsoft.UI.Xaml.Input.RightTappedRoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not WoCloud.Client.Models.CloudFile file) return;
+        Vm.Selected = file;
+    }
+
     private void Refresh_Click(object sender, RoutedEventArgs e) => _ = Vm.LoadAsync();
 
     private void Lock_Click(object sender, RoutedEventArgs e) => Vm.Lock();
