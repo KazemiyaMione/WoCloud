@@ -1,0 +1,61 @@
+<Page
+    x:Class="WoCloud.App.Views.LabPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Grid ColumnSpacing="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Spacing="2">
+                <TextBlock Text="调试面板" FontSize="20" FontWeight="SemiBold"/>
+                <TextBlock Text="手工发起原始请求，原样展示服务端返回，便于排查参数问题"
+                           FontSize="12" Foreground="#888"/>
+            </StackPanel>
+            <Button Grid.Column="1" Content="▶ 执行" Style="{StaticResource AccentButtonStyle}"
+                    VerticalAlignment="Center" Click="Invoke_Click"/>
+        </Grid>
+
+        <!-- 参数区 -->
+        <Grid Grid.Row="1" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="260"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Spacing="8">
+                <ComboBox Header="方法" ItemsSource="{x:Bind Vm.Keys}"
+                          SelectedItem="{x:Bind Vm.SelectedKey, Mode=TwoWay}"
+                          HorizontalAlignment="Stretch"/>
+                <ComboBox Header="通道" ItemsSource="{x:Bind Vm.Channels}"
+                          SelectedItem="{x:Bind Vm.SelectedChannel, Mode=TwoWay}"
+                          HorizontalAlignment="Stretch"/>
+                <CheckBox Content="参数加密 (secret)" IsChecked="{x:Bind Vm.UseEncrypt, Mode=TwoWay}"/>
+                <CheckBox Content="clientSecret 密钥" IsChecked="{x:Bind Vm.UseClientSecret, Mode=TwoWay}"/>
+            </StackPanel>
+
+            <TextBox Grid.Column="1" Header="参数 JSON（加密前的明文结构）"
+                     Text="{x:Bind Vm.ParamJson, Mode=TwoWay}"
+                     AcceptsReturn="True" TextWrapping="NoWrap" Height="200"
+                     FontFamily="Consolas" FontSize="12"
+                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+        </Grid>
+
+        <!-- 结果 -->
+        <Border Grid.Row="2" CornerRadius="10" Background="#0A000000" Padding="12">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                <TextBlock Text="{x:Bind Vm.ResultText, Mode=OneWay}" FontFamily="Consolas"
+                           FontSize="12" IsTextSelectionEnabled="True" TextWrapping="NoWrap"/>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</Page>

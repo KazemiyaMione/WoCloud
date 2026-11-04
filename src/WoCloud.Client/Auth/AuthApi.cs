@@ -1,0 +1,331 @@
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using WoCloud.Client.Core;
+using WoCloud.Client.Models;
+
+namespace WoCloud.Client.Auth;
+
+/// <summary>
+/// 登录/登出 API：
+/// 1. 短信验证码登录（AppLoginByMobile）—— 一段式
+/// 2. 账号密码登录（PcWebLogin 6008 → sendMessageCodeBase → PcLoginVerifyCode）—— 两段式
+/// 3. 扫码登录（QRCode/generate → query 轮询）
+/// 4. Token 粘贴直通
+/// </summary>
+public sealed class AuthApi
+{
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    private readonly DispatcherClient _dispatcher;
+    private readonly HttpClient _http;
+    private readonly SessionState _session;
+
+    public AuthApi(DispatcherClient dispatcher, SessionState session, HttpClient? httpClient = null)
+    {
+        _dispatcher = dispatcher;
+        _session = session;
+        _http = httpClient ?? new HttpClient();
+        // 服务端（BFF/开放接口）会校验 Origin/Referer/UA，需模拟浏览器指纹
+        _http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36");
+        _http.DefaultRequestHeaders.TryAddWithoutValidation("Origin", "https://pan.wo.cn");
+        _http.DefaultRequestHeaders.TryAddWithoutValidation("Referer", "https://pan.wo.cn/");
+        _http.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json, text/plain, */*");
+    }
+
+    // ---------- 图形验证码 ----------
+
+    /// <summary>生成图形验证码对（uuid + 图片 URL）。风控触发时使用。</summary>
+    public (string Uuid, string ImageUrl) NewCaptcha()
+    {
+        var uuid = Guid.NewGuid().ToString("D"); // RFC4122 v4
+        return (uuid, WoCloudConstants.GetVerifyCodeUrl(uuid));
+    }
+
+    /// <summary>查询指定账号是否需要图形验证码（PcWebLoginVerifyCodeShow）。</summary>
+    public Task<bool> IsCaptchaRequiredAsync(string phone, CancellationToken ct = default)
+    {
+        return CallApiUserAsync<VerifyCodeShowData>("PcWebLoginVerifyCodeShow",
+            new { account = phone, clientSecret = _session.ClientSecret }, ct)
+            .ContinueWith(t => t.Result?.IsNeedVerifyCode == 1, ct);
+    }
+
+    /// <summary>发送登录短信验证码（sendMessageCodeBase；captcha 可选，风控时必填）。</summary>
+    public async Task<bool> SendSmsCodeAsync(string phone, (string Uuid, string Code)? captcha = null, CancellationToken ct = default)
+    {
+        var inner = captcha is { } c
+            ? new { operateType = "1", phone, uuid = c.Uuid, verifyCode = c.Code }
+            : (object)new { operateType = "1", phone };
+        var body = new
+        {
+            func = "pc_send",
+            clientId = _session.ClientId,
+            param = CryptoHelper.Encrypt(JsonSerializer.Serialize(inner, JsonOpts), _session.ClientSecret),
+        };
+        var (ok, code, data) = await PostRawJsonAsync(WoCloudConstants.SendMessageCodeUrl, body, ct).ConfigureAwait(false);
+        if (ok) return true;
+        var desc = "短信发送失败";
+        if (data is { } dd && dd.ValueKind == JsonValueKind.Object &&
+            dd.TryGetProperty("RSP_DESC", out var rd) && rd.ValueKind == JsonValueKind.String)
+            desc = rd.GetString() ?? desc;
+        throw new WoCloudException(code ?? "SMS_ERR", desc);
+    }
+
+    // ---------- 登录通道 ----------
+
+    /// <summary>短信验证码直接登录（AppLoginByMobile）。</summary>
+    public async Task<string> LoginBySmsAsync(string phone, string smsCode, CancellationToken ct = default)
+    {
+        var resp = await _dispatcher.SendRawAsync("AppLoginByMobile",
+            new { phone, smsCode, clientSecret = _session.ClientSecret },
+            WoCloudConstants.ChannelApiUser, SecretType.ClientSecret, ct: ct).ConfigureAwait(false);
+        var (code, accessToken) = ExtractToken(resp);
+        if (code == "0000" && accessToken is not null)
+        {
+            _session.SetLogin(accessToken, phone);
+            return accessToken;
+        }
+        throw new WoCloudException(code, Describe(resp));
+    }
+
+    /// <summary>账号密码登录第一步（PcWebLogin）。返回 true=一步成功（罕见）；抛 6008=需短信二次验证。</summary>
+    public async Task<bool> LoginByPasswordAsync(string phone, string password,
+        (string Uuid, string Code)? captcha = null, CancellationToken ct = default)
+    {
+        object param = captcha is { } c
+            ? new { phone, password, uuid = c.Uuid, verifyCode = c.Code, clientSecret = _session.ClientSecret }
+            : new { phone, password, clientSecret = _session.ClientSecret };
+        var resp = await _dispatcher.SendRawAsync("PcWebLogin", param,
+            WoCloudConstants.ChannelApiUser, SecretType.ClientSecret, ct: ct).ConfigureAwait(false);
+        var code = resp.Rsp?.Code ?? "NO_RSP";
+        if (code == "0000")
+        {
+            // 少数情况密码登录直接完成：尝试取 token
+            var (_, token) = ExtractToken(resp);
+            if (token is not null) { _session.SetLogin(token, phone); return true; }
+            throw new WoCloudException("0000", "登录成功但未返回 token，请走短信二次验证");
+        }
+        if (code == "6008")
+        {
+            // 密码校验通过，需短信二次验证
+            await SendSmsCodeAsync(phone, captcha, ct).ConfigureAwait(false);
+            throw new NeedSmsVerifyException("6008", "密码校验通过，已发送短信验证码，请调用 CompleteSmsVerifyAsync");
+        }
+        throw new WoCloudException(code, Describe(resp));
+    }
+
+    /// <summary>账号密码登录第二步（PcLoginVerifyCode）。需先 LoginByPasswordAsync 抛 6008 后收到短信。</summary>
+    public async Task<string> CompleteSmsVerifyAsync(string phone, string smsCode,
+        (string Uuid, string Code)? captcha = null, CancellationToken ct = default)
+    {
+        object param = captcha is { } c
+            ? new { phone, messageCode = smsCode, uuid = c.Uuid, verifyCode = c.Code, clientSecret = _session.ClientSecret }
+            : new { phone, messageCode = smsCode, clientSecret = _session.ClientSecret };
+        var resp = await _dispatcher.SendRawAsync("PcLoginVerifyCode", param,
+            WoCloudConstants.ChannelApiUser, SecretType.ClientSecret, ct: ct).ConfigureAwait(false);
+        var (code, token) = ExtractToken(resp);
+        if (code == "0000" && token is not null)
+        {
+            _session.SetLogin(token, phone);
+            return token;
+        }
+        throw new WoCloudException(code, Describe(resp));
+    }
+
+    // ---------- 扫码登录 ----------
+
+    /// <summary>生成登录二维码。返回二维码 base64（png）与轮询用票据。（GET，实测 200）</summary>
+    public async Task<QrCodeTicket> GenerateQrCodeAsync(CancellationToken ct = default)
+    {
+        var (ok, code, data) = await GetRawJsonAsync(WoCloudConstants.QrCodeGenerateUrl, null, ct).ConfigureAwait(false);
+        if (!ok || data is null)
+            throw new WoCloudException(code ?? "QR_ERR", "二维码生成失败");
+        var q = data.Value.Deserialize<QrCodeData>(JsonOpts);
+        if (q?.Image is null || q.Uuid is null)
+            throw new WoCloudException("QR_FMT", "二维码响应格式异常: " + data.Value.GetRawText());
+        return new QrCodeTicket(q.Uuid, "data:image/png;base64," + q.Image);
+    }
+
+    /// <summary>轮询扫码状态（GET，实测 200；间隔 2 秒）。state==Confirmed 时已自动写入会话 token。</summary>
+    public async Task<QrPollState> PollQrCodeAsync(string ticketUuid, CancellationToken ct = default)
+    {
+        var (ok, code, data) = await GetRawJsonAsync(WoCloudConstants.QrCodeQueryUrl,
+            new Dictionary<string, string?> { ["uuid"] = ticketUuid }, ct).ConfigureAwait(false);
+        if (!ok || data is null)
+            throw new WoCloudException(code ?? "QR_ERR", "二维码状态查询失败");
+        var q = data.Value.Deserialize<QrCodeData>(JsonOpts);
+        if (q?.State is null) return QrPollState.Waiting;
+        switch (q.State)
+        {
+            case 3:
+                if (string.IsNullOrEmpty(q.Token))
+                    throw new WoCloudException("QR_TOKEN", "扫码确认但响应缺少 token");
+                _session.SetLogin(q.Token);
+                return QrPollState.Confirmed;
+            case 2: return QrPollState.Scanned;
+            default: return QrPollState.Waiting;
+        }
+    }
+
+    // ---------- 其他 ----------
+
+    /// <summary>Token 粘贴直通（开发调试）。</summary>
+    public void SetTokenDirect(string token, string? phone = null) => _session.SetLogin(token, phone);
+
+    /// <summary>退出登录。</summary>
+    public async Task LogoutAsync(CancellationToken ct = default)
+    {
+        if (_session.IsLoggedIn)
+        {
+            try
+            {
+                await _dispatcher.CallAsync<object>("AppLogout", null,
+                    WoCloudConstants.ChannelApiUser, SecretType.ClientSecret, ct: ct).ConfigureAwait(false);
+            }
+            catch { /* 登出失败不阻塞本地清理 */ }
+        }
+        _session.Clear();
+    }
+
+    /// <summary>查询用户信息（AppQueryUser）。</summary>
+    public Task<CloudUserInfo?> GetUserInfoAsync(CancellationToken ct = default) =>
+        _dispatcher.CallAsync<CloudUserInfo>("AppQueryUser",
+            new { accessToken = _session.AccessToken },
+            WoCloudConstants.ChannelApiUser, SecretType.ClientSecret, ct: ct);
+
+    // ---------- 内部工具 ----------
+
+    private Task<VerifyCodeShowData?> CallApiUserAsync<T>(string key, object param, CancellationToken ct) =>
+        _dispatcher.CallAsync<VerifyCodeShowData>(key, param,
+            WoCloudConstants.ChannelApiUser, SecretType.ClientSecret, ct: ct);
+
+    /// <summary>裸 GET（QRCode generate/query），带 X-YP 头；query 可空或 kv 参数。</summary>
+    private async Task<(bool Ok, string? Code, JsonElement? Data)> GetRawJsonAsync(
+        string url, Dictionary<string, string?>? query, CancellationToken ct)
+    {
+        var full = url;
+        if (query is { Count: > 0 })
+        {
+            var qp = string.Join("&", query
+                .Where(kv => kv.Value is not null)
+                .Select(kv => Uri.EscapeDataString(kv.Key) + "=" + Uri.EscapeDataString(kv.Value!)));
+            full = url + "?" + qp;
+        }
+        using var msg = new HttpRequestMessage(HttpMethod.Get, full);
+        msg.Headers.TryAddWithoutValidation("X-YP-Access-Token", _session.AccessToken ?? "");
+        msg.Headers.TryAddWithoutValidation("access-token", _session.AccessToken ?? "");
+        msg.Headers.TryAddWithoutValidation("X-YP-Client-Id", _session.ClientId);
+        msg.Headers.TryAddWithoutValidation("client-id", _session.ClientId);
+        using var resp = await _http.SendAsync(msg, ct).ConfigureAwait(false);
+        var text = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        try
+        {
+            using var doc = JsonDocument.Parse(text);
+            var root = doc.RootElement;
+            var metaCode = root.TryGetProperty("meta", out var meta) &&
+                           meta.TryGetProperty("code", out var mc) ? mc.GetString() : null;
+            JsonElement? result = root.TryGetProperty("result", out var r) ? r.Clone() : null;
+            return (metaCode == "200", metaCode, result);
+        }
+        catch (JsonException)
+        {
+            return (false, "BAD_JSON", null);
+        }
+    }
+
+    /// <summary>裸 JSON POST（sendMessageCodeBase），带 X-YP 头。</summary>
+    private async Task<(bool Ok, string? Code, JsonElement? Data)> PostRawJsonAsync(
+        string url, object body, CancellationToken ct)
+    {
+        using var msg = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(body, JsonOpts), Encoding.UTF8, "application/json"),
+        };
+        msg.Headers.TryAddWithoutValidation("X-YP-Access-Token", _session.AccessToken ?? "");
+        msg.Headers.TryAddWithoutValidation("access-token", _session.AccessToken ?? "");
+        msg.Headers.TryAddWithoutValidation("X-YP-Client-Id", _session.ClientId);
+        msg.Headers.TryAddWithoutValidation("client-id", _session.ClientId);
+        using var resp = await _http.SendAsync(msg, ct).ConfigureAwait(false);
+        var text = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        try
+        {
+            using var doc = JsonDocument.Parse(text);
+            var root = doc.RootElement;
+            var metaCode = root.TryGetProperty("meta", out var meta) &&
+                           meta.TryGetProperty("code", out var mc) ? mc.GetString() : null;
+            JsonElement? result = root.TryGetProperty("result", out var r) ? r.Clone() : null;
+            return (metaCode == "200", metaCode, result);
+        }
+        catch (JsonException)
+        {
+            return (false, "BAD_JSON", null);
+        }
+    }
+
+    /// <summary>从 api-user 原始信封提取 access_token（DATA 为 clientSecret AES 密文）。</summary>
+    private (string Code, string? Token) ExtractToken(DispatcherResponse resp)
+    {
+        var code = resp.Rsp?.Code ?? "NO_RSP";
+        if (resp.Rsp?.Data is not { } d)
+            return (code, null);
+
+        JsonElement data;
+        if (d.ValueKind == JsonValueKind.String)
+        {
+            try
+            {
+                var plain = CryptoHelper.Decrypt(d.GetString()!, _session.ClientSecret);
+                data = JsonDocument.Parse(plain).RootElement.Clone();
+            }
+            catch
+            {
+                return (code, null);
+            }
+        }
+        else
+        {
+            data = d;
+        }
+
+        if (data.ValueKind == JsonValueKind.Object &&
+            data.TryGetProperty("access_token", out var t) &&
+            t.ValueKind == JsonValueKind.String)
+            return (code, t.GetString());
+
+        return (code, null);
+    }
+
+    private static string Describe(DispatcherResponse resp) =>
+        resp.Rsp?.Desc ?? resp.Msg ?? "未知错误";
+}
+
+// ---------- DTO ----------
+
+public sealed class QrCodeTicket(string uuid, string imageBase64DataUri)
+{
+    public string Uuid { get; } = uuid;
+    public string ImageDataUri { get; } = imageBase64DataUri;
+}
+
+public enum QrPollState { Waiting, Scanned, Confirmed }
+
+/// <summary>密码登录需要短信二次验证（非错误，属正常流程分支）。</summary>
+public sealed class NeedSmsVerifyException(string code, string message) : WoCloudException(code, message);
+
+internal sealed class VerifyCodeShowData
+{
+    [JsonPropertyName("isNeedVerfyCode")] public int IsNeedVerifyCode { get; set; }
+}
+
+internal sealed class QrCodeData
+{
+    [JsonPropertyName("uuid")] public string? Uuid { get; set; }
+    [JsonPropertyName("image")] public string? Image { get; set; }
+    [JsonPropertyName("state")] public int? State { get; set; }
+    [JsonPropertyName("token")] public string? Token { get; set; }
+}

@@ -1,0 +1,104 @@
+<Page
+    x:Class="WoCloud.App.Views.LoginPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Width="360" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Spacing="18" Margin="24,48,24,48">
+
+            <!-- 品牌 -->
+            <Image Source="ms-appx:///Assets/logo.png" Width="132" Stretch="Uniform"
+                   HorizontalAlignment="Center" Margin="0,0,0,6"/>
+
+            <TextBlock Text="登录联通云盘" FontSize="20" FontWeight="SemiBold"
+                       HorizontalAlignment="Center"/>
+            <TextBlock Text="使用联通云盘 App 扫码，或手机号验证码登录"
+                       FontSize="12" Opacity="0.6" TextWrapping="Wrap" TextAlignment="Center"
+                       HorizontalAlignment="Center" Margin="0,0,0,4"/>
+
+            <SelectorBar x:Name="Tabs" SelectionChanged="Tabs_SelectionChanged">
+                <SelectorBarItem Text="扫码登录" IsSelected="True"/>
+                <SelectorBarItem Text="短信登录"/>
+                <SelectorBarItem Text="Token 直通"/>
+            </SelectorBar>
+
+            <Grid>
+                <!-- 扫码 -->
+                <StackPanel x:Name="QrPanel" Spacing="14" Visibility="Visible">
+                    <Border Width="200" Height="200" CornerRadius="8" Background="White"
+                            BorderBrush="#E3E6EA" BorderThickness="1"
+                            HorizontalAlignment="Center">
+                        <Grid>
+                            <Image Source="{x:Bind QrBitmap, Mode=OneWay}" Stretch="Uniform" Margin="8"/>
+                            <ProgressRing x:Name="QrRing" IsActive="{x:Bind Vm.QrBusy, Mode=OneWay}"
+                                          Width="36" Height="36"/>
+                            <TextBlock Text="{x:Bind Vm.QrHint, Mode=OneWay}"
+                                       TextWrapping="Wrap" TextAlignment="Center"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Foreground="#8A94A0" Padding="16" FontSize="12"
+                                       Visibility="{x:Bind QrEmpty, Mode=OneWay}"/>
+                        </Grid>
+                    </Border>
+
+                    <Button Content="刷新二维码" HorizontalAlignment="Center"
+                            Command="{x:Bind Vm.RefreshQrCommand}"/>
+
+                    <TextBlock Text="手机打开联通云盘 App →「我的」右上角扫码"
+                               FontSize="12" Opacity="0.55" HorizontalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- 短信 -->
+                <StackPanel x:Name="SmsPanel" Spacing="12" Visibility="Collapsed">
+                    <TextBox Header="手机号" PlaceholderText="11 位手机号" MaxLength="11"
+                             Text="{x:Bind Vm.Phone, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             InputScope="TelephoneNumber"/>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox Header="短信验证码" PlaceholderText="6 位验证码" MaxLength="6"
+                                 Text="{x:Bind Vm.SmsCode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                        <Button Grid.Column="1" Content="发送验证码" VerticalAlignment="Bottom"
+                                IsEnabled="{x:Bind Vm.CanSendSms, Mode=OneWay}"
+                                Command="{x:Bind Vm.SendSmsCommand}"/>
+                    </Grid>
+
+                    <!-- 图形验证码（风控时出现） -->
+                    <StackPanel Spacing="6"
+                                Visibility="{x:Bind Vm.CaptchaNeeded, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                        <TextBox Header="图形验证码"
+                                 Text="{x:Bind Vm.CaptchaCode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                        <Image Source="{x:Bind CaptchaBitmap, Mode=OneWay}" MaxHeight="44"
+                               HorizontalAlignment="Left" Tapped="Captcha_Tapped"/>
+                        <TextBlock Text="看不清？点击图片刷新" FontSize="11" Opacity="0.55"
+                                   Visibility="{x:Bind CaptchaBitmap, Mode=OneWay, Converter={StaticResource NullToVis}}"/>
+                    </StackPanel>
+
+                    <Button Content="登录" Style="{StaticResource AccentButtonStyle}"
+                            HorizontalAlignment="Stretch" Margin="0,4,0,0"
+                            IsEnabled="{x:Bind Vm.IsNotBusy, Mode=OneWay}"
+                            Command="{x:Bind Vm.LoginBySmsCommand}"/>
+                </StackPanel>
+
+                <!-- Token -->
+                <StackPanel x:Name="TokenPanel" Spacing="12" Visibility="Collapsed">
+                    <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.6"
+                               Text="在浏览器登录 pan.wo.cn 后，从 DevTools → Application → Cookies 复制 WoCloud-Web-Token 的值粘贴到此处。"/>
+                    <TextBox Header="Access Token" PlaceholderText="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                             Text="{x:Bind Vm.TokenInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             FontFamily="Consolas"/>
+                    <Button Content="使用此 Token 登录" Style="{StaticResource AccentButtonStyle}"
+                            HorizontalAlignment="Stretch"
+                            Command="{x:Bind Vm.LoginByTokenCommand}"/>
+                </StackPanel>
+            </Grid>
+
+            <InfoBar x:Name="SmsInfo" IsOpen="{x:Bind HasStatus, Mode=OneWay}" IsClosable="False"
+                     Severity="Warning" Message="{x:Bind Vm.StatusText, Mode=OneWay}"
+                     Visibility="{x:Bind HasStatus, Mode=OneWay, Converter={StaticResource BoolToVis}}"/>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

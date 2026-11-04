@@ -1,0 +1,120 @@
+<Page
+    x:Class="WoCloud.App.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="14" Padding="0,0,16,24">
+
+            <TextBlock Text="设置" FontSize="20" FontWeight="SemiBold"/>
+
+            <!-- 外观 -->
+            <Border CornerRadius="10" Padding="18" Background="{ThemeResource LayerFillColorDefaultBrush}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="外观" FontSize="15" FontWeight="SemiBold"/>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="主题" VerticalAlignment="Center" FontSize="13"/>
+                        <ComboBox Grid.Column="1" Width="140" ItemsSource="{x:Bind Vm.ThemeOptions, Mode=OneWay}"
+                                  SelectedIndex="{x:Bind Vm.ThemeIndex, Mode=TwoWay}"/>
+                        <TextBlock Grid.Column="2" Text="切换即时生效，窗口/列表/预览同步"
+                                   FontSize="11" Opacity="0.55" VerticalAlignment="Center"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- 下载 -->
+            <Border CornerRadius="10" Padding="18" Background="{ThemeResource LayerFillColorDefaultBrush}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="下载" FontSize="15" FontWeight="SemiBold"/>
+
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="默认下载目录" VerticalAlignment="Center" FontSize="13"/>
+                        <TextBlock Grid.Column="1" Text="{x:Bind Vm.Settings.DownloadFolder, Mode=OneWay}"
+                                   FontSize="12" Foreground="#666" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <Button Grid.Column="2" Content="更改…" Click="PickFolder_Click"/>
+                    </Grid>
+
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="同时下载数" VerticalAlignment="Center" FontSize="13"/>
+                        <ComboBox Grid.Column="1" Width="100" ItemsSource="{x:Bind Vm.ConcurrencyOptions}"
+                                  SelectedItem="{x:Bind Vm.Settings.DownloadConcurrency, Mode=TwoWay}"/>
+                        <TextBlock Grid.Column="2" Text="文件多时并发越高越占带宽，建议 3"
+                                   FontSize="11" Foreground="#999" VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <ToggleSwitch Header="断点续传" IsOn="{x:Bind Vm.Settings.ResumeDownload, Mode=TwoWay}"
+                                  OnContent="开启（保留 .part 文件）" OffContent="关闭（每次重下）"/>
+
+                    <ToggleSwitch Header="传输完成后自动刷新列表"
+                                  IsOn="{x:Bind Vm.Settings.AutoRefreshAfterTransfer, Mode=TwoWay}"
+                                  OnContent="自动刷新" OffContent="不刷新"/>
+                </StackPanel>
+            </Border>
+
+            <!-- 上传 -->
+            <Border CornerRadius="10" Padding="18" Background="{ThemeResource LayerFillColorDefaultBrush}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="上传" FontSize="15" FontWeight="SemiBold"/>
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="分片大小" VerticalAlignment="Center" FontSize="13"/>
+                        <ComboBox Grid.Column="1" Width="100" ItemsSource="{x:Bind Vm.ChunkOptions}"
+                                  SelectedItem="{x:Bind Vm.Settings.UploadChunkMb, Mode=TwoWay}"/>
+                        <TextBlock Grid.Column="2" Text="MB / 片" FontSize="12" Foreground="#888"
+                                   VerticalAlignment="Center"/>
+                    </Grid>
+                    <TextBlock Text="说明：云端文件名始终使用本地原文件名，上传完成后可在「传输」页查看结果与失败原因。"
+                               FontSize="11" Foreground="#999" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <!-- 账号 -->
+            <Border CornerRadius="10" Padding="18" Background="{ThemeResource LayerFillColorDefaultBrush}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="账号" FontSize="15" FontWeight="SemiBold"/>
+                    <TextBlock Text="{x:Bind Vm.AccountText, Mode=OneWay}" FontSize="13" TextWrapping="Wrap"/>
+
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button Content="退出登录" Style="{StaticResource AccentButtonStyle}"
+                                Click="Logout_Click"/>
+                        <Button Content="清除本地缓存" Click="ClearCache_Click"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- 关于 -->
+            <Border CornerRadius="10" Padding="18" Background="{ThemeResource LayerFillColorDefaultBrush}">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="关于" FontSize="15" FontWeight="SemiBold"/>
+                    <TextBlock Text="WoCloud · 联通云盘第三方客户端" FontSize="13"/>
+                    <TextBlock Text="{x:Bind Vm.VersionText, Mode=OneWay}" FontSize="12" Foreground="#888"/>
+                    <TextBlock Text="所有接口参数均来自前端源码 + 线上实测；上传/下载走官方 CDN 直链。"
+                               FontSize="11" Foreground="#999" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <InfoBar IsOpen="{x:Bind HasStatus, Mode=OneWay}" IsClosable="False"
+                     Severity="Informational" Message="{x:Bind Vm.StatusText, Mode=OneWay}"/>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

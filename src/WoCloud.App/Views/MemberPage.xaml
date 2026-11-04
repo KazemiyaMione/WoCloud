@@ -1,0 +1,410 @@
+<Page
+    x:Class="WoCloud.App.Views.MemberPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:m="using:WoCloud.Client.Misc">
+
+    <Page.Resources>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}"/>
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Padding" Value="20"/>
+        </Style>
+        <Style x:Key="SectionTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Opacity" Value="0.6"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style x:Key="Value" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </Page.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <Grid RowSpacing="14" Padding="0,0,0,24" MaxWidth="1200" HorizontalAlignment="Center">
+
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- 标题栏 -->
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="2">
+                    <TextBlock Text="账号与会员" FontSize="20" FontWeight="SemiBold"/>
+                    <TextBlock Text="存储空间、会员状态与家庭云" FontSize="12" Opacity="0.55"/>
+                </StackPanel>
+                <ProgressRing Grid.Column="1" IsActive="{x:Bind Vm.IsLoading, Mode=OneWay}"
+                              Width="20" Height="20" VerticalAlignment="Center"/>
+                <Button Grid.Column="2" Content="刷新" Command="{x:Bind Vm.RefreshCommand}"
+                        IsEnabled="{x:Bind Vm.IsNotLoading, Mode=OneWay}"/>
+            </Grid>
+
+            <!-- 主体：宽屏两栏，窄屏堆叠 -->
+            <Grid x:Name="Body" Grid.Row="1" ColumnSpacing="16" RowSpacing="16">
+                <VisualStateManager.VisualStateGroups>
+                    <VisualStateGroup x:Name="WidthStates">
+                        <VisualState x:Name="Stacked">
+                            <VisualState.Setters>
+                                <Setter Target="RightCol.(Grid.Column)" Value="0"/>
+                                <Setter Target="RightCol.(Grid.Row)" Value="1"/>
+                                <Setter Target="SideCol.Width" Value="0"/>
+                            </VisualState.Setters>
+                        </VisualState>
+                        <VisualState x:Name="SideBySide">
+                            <VisualState.StateTriggers>
+                                <AdaptiveTrigger MinWindowWidth="1080"/>
+                            </VisualState.StateTriggers>
+                            <VisualState.Setters>
+                                <Setter Target="RightCol.(Grid.Column)" Value="1"/>
+                                <Setter Target="RightCol.(Grid.Row)" Value="0"/>
+                                <Setter Target="SideCol.Width" Value="340"/>
+                            </VisualState.Setters>
+                        </VisualState>
+                    </VisualStateGroup>
+                </VisualStateManager.VisualStateGroups>
+
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition x:Name="SideCol" Width="340"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- 左列：账号 + 空间 -->
+                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="16">
+
+                    <!-- 账号卡 -->
+                    <Border Style="{StaticResource Card}">
+                        <Grid ColumnSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Border Width="60" Height="60" CornerRadius="30"
+                                    Background="{ThemeResource AccentFillColorDefaultBrush}">
+                                <Grid>
+                                    <FontIcon Glyph="&#xE77B;" FontSize="26" Foreground="White"
+                                              Visibility="{x:Bind Vm.HasAvatar, Mode=OneWay, Converter={StaticResource BoolToVisCollapsed}}"/>
+                                    <Image Source="{x:Bind Vm.Avatar, Mode=OneWay}" Stretch="UniformToFill"/>
+                                </Grid>
+                            </Border>
+
+                            <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="{x:Bind Vm.UserName, Mode=OneWay}" FontSize="18"
+                                           FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{x:Bind Vm.UserIdText, Mode=OneWay}" FontSize="12"
+                                           Opacity="0.55" TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2" Spacing="6" VerticalAlignment="Center">
+                                <Border Background="#FFF3D6" CornerRadius="10" Padding="10,4"
+                                        HorizontalAlignment="Right"
+                                        Visibility="{x:Bind Vm.IsVip, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="{x:Bind Vm.VipBadge, Mode=OneWay}" FontSize="12"
+                                               FontWeight="SemiBold" Foreground="#8A5B00"/>
+                                </Border>
+                                <TextBlock Text="{x:Bind Vm.RenewText, Mode=OneWay}" FontSize="12"
+                                           Opacity="0.55" HorizontalAlignment="Right"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- 空间卡 -->
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel Spacing="14">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="存储空间" Style="{StaticResource SectionTitle}"/>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
+                                            VerticalAlignment="Center">
+                                    <TextBlock Text="{x:Bind Vm.UsedText, Mode=OneWay}" FontSize="13"
+                                               FontWeight="SemiBold"/>
+                                    <TextBlock Text="/" FontSize="13" Opacity="0.5"/>
+                                    <TextBlock Text="{x:Bind Vm.AllText, Mode=OneWay}" FontSize="13"
+                                               Opacity="0.6"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <ProgressBar Value="{x:Bind Vm.SpaceRatio, Mode=OneWay}" Maximum="1"
+                                         Height="10" CornerRadius="5"/>
+
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="已用" Style="{StaticResource Label}"/>
+                                    <TextBlock Text="{x:Bind Vm.UsedText, Mode=OneWay}" FontSize="16"
+                                               FontWeight="SemiBold"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="2">
+                                    <TextBlock Text="剩余" Style="{StaticResource Label}"/>
+                                    <TextBlock Text="{x:Bind Vm.RemainingText, Mode=OneWay}" FontSize="16"
+                                               FontWeight="SemiBold"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Spacing="2">
+                                    <TextBlock Text="占比" Style="{StaticResource Label}"/>
+                                    <TextBlock Text="{x:Bind Vm.PercentText, Mode=OneWay}" FontSize="16"
+                                               FontWeight="SemiBold"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <InfoBar IsOpen="{x:Bind Vm.SpaceWarning, Mode=OneWay}" IsClosable="False"
+                                    Severity="Warning" Title="空间即将用满"
+                                    Message="建议清理回收站或删除不常用的大文件"
+                                    Visibility="{x:Bind Vm.SpaceWarning, Mode=OneWay, Converter={StaticResource BoolToVis}}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 每日打卡（本地记录） -->
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel Spacing="12">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="每日打卡" Style="{StaticResource SectionTitle}"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="{x:Bind Vm.CheckInStreak, Mode=OneWay}" FontSize="30"
+                                                   FontWeight="Bold" Foreground="{StaticResource WoCloudBlueBrush}"/>
+                                        <TextBlock Text="天连续" FontSize="13" Opacity="0.6"
+                                                   VerticalAlignment="Bottom" Margin="0,0,0,6"/>
+                                    </StackPanel>
+                                    <TextBlock Text="{x:Bind Vm.CheckInHint, Mode=OneWay}" FontSize="12"
+                                               Opacity="0.55" TextWrapping="Wrap"/>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
+                                    <Button Content="{x:Bind Vm.CheckInButtonText, Mode=OneWay}"
+                                            Style="{StaticResource AccentButtonStyle}"
+                                            Command="{x:Bind Vm.CheckInCommand}"
+                                            IsEnabled="{x:Bind Vm.CanCheckIn, Mode=OneWay}"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                                        <TextBlock Text="累计" FontSize="12" Opacity="0.5"/>
+                                        <TextBlock Text="{x:Bind Vm.CheckInTotal, Mode=OneWay}" FontSize="12"
+                                                   FontWeight="SemiBold" Opacity="0.75"/>
+                                        <TextBlock Text="天" FontSize="12" Opacity="0.5"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock FontSize="11" Opacity="0.45" TextWrapping="Wrap"
+                                       Text="打卡仅在本机记录连续天数，云盘没有签到接口，不会产生云端积分或权益。"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- 右列：会员状态 + 家庭云 -->
+                <StackPanel x:Name="RightCol" Grid.Row="0" Grid.Column="1" Spacing="16">
+
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel Spacing="16">
+                            <TextBlock Text="会员状态" Style="{StaticResource SectionTitle}"/>
+
+                            <StackPanel Spacing="12">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="会员等级" Style="{StaticResource Label}"/>
+                                    <TextBlock Grid.Column="1" Text="{x:Bind Vm.LevelText, Mode=OneWay}"
+                                               Style="{StaticResource Value}"/>
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="有效期至" Style="{StaticResource Label}"/>
+                                    <TextBlock Grid.Column="1" Text="{x:Bind Vm.ValidText, Mode=OneWay}"
+                                               Style="{StaticResource Value}"/>
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="自动续费" Style="{StaticResource Label}"/>
+                                    <TextBlock Grid.Column="1" Text="{x:Bind Vm.RenewText, Mode=OneWay}"
+                                               Style="{StaticResource Value}"/>
+                                </Grid>
+                            </StackPanel>
+
+                            <TextBlock Text="会员信息暂不可用（当前登录方式受限），仅显示账号与本地可见数据。"
+                                       FontSize="12" Opacity="0.55" TextWrapping="Wrap"
+                                       Visibility="{x:Bind Vm.HasSummary, Mode=OneWay, Converter={StaticResource BoolToVisCollapsed}}"/>
+
+                            <Button Content="在官网管理会员" HorizontalAlignment="Stretch"
+                                    Command="{x:Bind Vm.OpenPortalCommand}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 会员权益（BFF displayMembershipBenefit） -->
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel Spacing="12">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="会员权益" Style="{StaticResource SectionTitle}"/>
+                                <TextBlock Grid.Column="1" Text="{x:Bind Vm.BenefitVipText, Mode=OneWay}"
+                                           FontSize="12" Opacity="0.55" VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <StackPanel Spacing="10">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="单文件上传上限" Style="{StaticResource Label}"/>
+                                    <TextBlock Grid.Column="1" Text="{x:Bind Vm.BenefitUploadText, Mode=OneWay}"
+                                               Style="{StaticResource Value}"/>
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="回收站保留" Style="{StaticResource Label}"/>
+                                    <TextBlock Grid.Column="1" Text="{x:Bind Vm.BenefitRecycleText, Mode=OneWay}"
+                                               Style="{StaticResource Value}"/>
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="家庭云" Style="{StaticResource Label}"/>
+                                    <TextBlock Grid.Column="1" Text="{x:Bind Vm.BenefitFamilyText, Mode=OneWay}"
+                                               Style="{StaticResource Value}"/>
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="快传次数" Style="{StaticResource Label}"/>
+                                    <TextBlock Grid.Column="1" Text="{x:Bind Vm.BenefitTransientText, Mode=OneWay}"
+                                               Style="{StaticResource Value}"/>
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="批量上传" Style="{StaticResource Label}"/>
+                                    <TextBlock Grid.Column="1" Text="{x:Bind Vm.BenefitBatchText, Mode=OneWay}"
+                                               Style="{StaticResource Value}"/>
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="权益到期" Style="{StaticResource Label}"/>
+                                    <TextBlock Grid.Column="1" Text="{x:Bind Vm.BenefitExpireText, Mode=OneWay}"
+                                               Style="{StaticResource Value}"/>
+                                </Grid>
+                            </StackPanel>
+
+                            <TextBlock Text="权益信息暂不可用（当前登录方式受限）。" FontSize="12" Opacity="0.55"
+                                       TextWrapping="Wrap"
+                                       Visibility="{x:Bind Vm.HasBenefit, Mode=OneWay, Converter={StaticResource BoolToVisCollapsed}}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel Spacing="12">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="家庭云" Style="{StaticResource SectionTitle}"/>
+                                <TextBlock Grid.Column="1" Text="{x:Bind Vm.FamilySummary, Mode=OneWay}"
+                                           FontSize="12" Opacity="0.55" VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <ListView ItemsSource="{x:Bind Vm.Families, Mode=OneWay}" SelectionMode="None"
+                                      MaxHeight="220"
+                                      Visibility="{x:Bind Vm.HasFamilies, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                                <ListView.ItemContainerStyle>
+                                    <Style TargetType="ListViewItem">
+                                        <Setter Property="Padding" Value="0"/>
+                                        <Setter Property="Margin" Value="0,2"/>
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                    </Style>
+                                </ListView.ItemContainerStyle>
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="m:FamilyGroup">
+                                        <Grid ColumnSpacing="12" Padding="8,6" CornerRadius="8"
+                                              Background="{ThemeResource SubtleFillColorSecondaryBrush}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <Border Width="36" Height="36" CornerRadius="18"
+                                                    Background="{ThemeResource ControlAltFillColorSecondaryBrush}">
+                                                <Image Source="{x:Bind GroupHeadUrl, Converter={StaticResource UrlToBitmap}}"
+                                                       Stretch="UniformToFill"/>
+                                            </Border>
+
+                                            <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                                <TextBlock Text="{x:Bind GroupName}" FontSize="14"
+                                                           FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock FontSize="12" Opacity="0.55"
+                                                           Text="{x:Bind MemberCountText}"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+
+                            <TextBlock Text="还没有加入家庭云。在官方 App 或网页端创建家庭后，这里会自动出现。"
+                                       FontSize="12" Opacity="0.55" TextWrapping="Wrap"
+                                       Visibility="{x:Bind Vm.HasFamilies, Mode=OneWay, Converter={StaticResource BoolToVisCollapsed}}"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+
+            <!-- 状态提示 -->
+            <InfoBar Grid.Row="2" IsOpen="{x:Bind Vm.HasStatus, Mode=OneWay}" IsClosable="False"
+                     Severity="Informational" Message="{x:Bind Vm.StatusText, Mode=OneWay}"
+                     Visibility="{x:Bind Vm.HasStatus, Mode=OneWay, Converter={StaticResource BoolToVis}}"/>
+        </Grid>
+    </ScrollViewer>
+</Page>

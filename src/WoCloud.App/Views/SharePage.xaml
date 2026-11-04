@@ -1,0 +1,106 @@
+<Page
+    x:Class="WoCloud.App.Views.SharePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Grid ColumnSpacing="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="我的分享" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center"/>
+            <Button Grid.Column="1" Content="打开分享…" Click="OpenShare_Click"/>
+            <Button Grid.Column="2" Content="⟳ 刷新" Click="Refresh_Click"/>
+        </Grid>
+
+        <InfoBar Grid.Row="1" IsOpen="True" IsClosable="False" Severity="Informational"
+                 Message="{x:Bind Vm.StatusText, Mode=OneWay}"/>
+
+        <ListView Grid.Row="2" ItemsSource="{x:Bind Vm.Shares, Mode=OneWay}"
+                  SelectionMode="None">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="m:ShareItem" xmlns:m="using:WoCloud.Client.Models">
+                    <Grid ColumnSpacing="12" Padding="10,8" CornerRadius="8" Background="#0A0F6CBD">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="36"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="80"/>
+                            <ColumnDefinition Width="160"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Width="36" Height="28" CornerRadius="4" Background="#F0F3F7">
+                            <Image Source="{x:Bind ThumbUrl, Converter={StaticResource UrlToBitmap}}"
+                                   Stretch="UniformToFill"/>
+                        </Border>
+
+                        <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Text="{x:Bind ShareName}" TextTrimming="CharacterEllipsis" FontSize="13"/>
+                            <TextBlock Text="{x:Bind Link}" TextTrimming="CharacterEllipsis"
+                                       FontSize="11" Foreground="#0F6CBD"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock Text="提取码" FontSize="10" Foreground="#999"/>
+                            <TextBlock Text="{x:Bind ShareCode}" FontSize="13" FontWeight="SemiBold"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="3" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock Text="有效期至" FontSize="10" Foreground="#999"/>
+                            <TextBlock Text="{x:Bind ExpireTime}" FontSize="12"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <Button Content="复制" Click="Copy_Click"/>
+                            <Button Content="取消" Click="Cancel_Click"/>
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <!-- 打开的分享 -->
+        <StackPanel Grid.Row="3" Spacing="4">
+            <TextBlock Text="{x:Bind Vm.ShareTitle, Mode=OneWay}" FontSize="16" FontWeight="SemiBold"/>
+            <TextBlock Text="{x:Bind Vm.OwnerText, Mode=OneWay}" FontSize="12" Foreground="#888"/>
+        </StackPanel>
+
+        <ListView Grid.Row="4" MaxHeight="220" ItemsSource="{x:Bind Vm.ShareFiles, Mode=OneWay}"
+                  SelectionMode="Single">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="s:ShareFileEntry" xmlns:s="using:WoCloud.Client.Share">
+                    <Grid ColumnSpacing="12" Padding="8,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="36"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="90"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Width="36" Height="28" CornerRadius="4" Background="#F0F3F7"
+                                Visibility="{x:Bind HasThumb, Converter={StaticResource BoolToVis}}">
+                            <Image Source="{x:Bind ThumbUrl, Converter={StaticResource UrlToBitmap}}"
+                                   Stretch="UniformToFill"/>
+                        </Border>
+
+                        <TextBlock Grid.Column="1" Text="{x:Bind FileName}" FontSize="13"
+                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" Text="{x:Bind SizeText}" FontSize="12"
+                                   Foreground="#888" VerticalAlignment="Center"/>
+                        <Button Grid.Column="3" Content="下载" Click="ShareFileDownload_Click"/>
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+    </Grid>
+</Page>

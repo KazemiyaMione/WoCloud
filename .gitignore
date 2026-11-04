@@ -1,0 +1,33 @@
+# ---------- 构建产物 ----------
+bin/
+obj/
+buildtmp/
+*.log
+*.binlog
+
+# ---------- IDE / 用户级 ----------
+.vs/
+.vscode/
+*.user
+*.suo
+*.userprefs
+*.DotSettings.user
+
+# ---------- 本地私有资料（含协议文档、探测脚本，不进仓库）----------
+.private/
+
+# ---------- 运行时数据（含 token，绝不可提交）----------
+data/
+session.json
+settings.json
+
+# ---------- 临时文件 ----------
+qr.html
+qr-*.txt
+*.tmp
+*.part
+
+# ---------- 系统 ----------
+Thumbs.db
+desktop.ini
+.DS_Store

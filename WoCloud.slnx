@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WoCloud.App/WoCloud.App.csproj">
+      <Platform Project="x86" />
+    </Project>
+    <Project Path="src/WoCloud.Client/WoCloud.Client.csproj" />
+    <Project Path="src/WoCloud.ConsoleTest/WoCloud.ConsoleTest.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/WoCloud.Client.Tests/WoCloud.Client.Tests.csproj" />
+  </Folder>
+</Solution>

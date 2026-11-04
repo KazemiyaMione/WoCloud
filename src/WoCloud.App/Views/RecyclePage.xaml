@@ -1,0 +1,69 @@
+<Page
+    x:Class="WoCloud.App.Views.RecyclePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Grid ColumnSpacing="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="回收站" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center"/>
+            <Button Grid.Column="1" Content="还原" Click="Reduce_Click"/>
+            <Button Grid.Column="2" Content="永久删除" Click="Delete_Click"/>
+            <Button Grid.Column="3" Content="清空回收站" Click="Clear_Click"/>
+        </Grid>
+
+        <InfoBar Grid.Row="1" IsOpen="True" IsClosable="False" Severity="Informational"
+                 Message="{x:Bind Vm.StatusText, Mode=OneWay}"/>
+
+        <ListView Grid.Row="2" ItemsSource="{x:Bind Vm.Items, Mode=OneWay}"
+                  SelectedItem="{x:Bind Vm.Selected, Mode=TwoWay}" SelectionMode="Single">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="m:RecycleItem" xmlns:m="using:WoCloud.Client.Models">
+                    <Grid ColumnSpacing="12" Padding="8,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="36"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="100"/>
+                            <ColumnDefinition Width="130"/>
+                            <ColumnDefinition Width="130"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Grid>
+                            <FontIcon FontSize="22"
+                                      Visibility="{x:Bind HasThumb, Converter={StaticResource BoolToVisCollapsed}}">
+                                <FontIcon.Glyph>
+                                    <Binding Path="FileType" Converter="{StaticResource FileTypeGlyph}"/>
+                                </FontIcon.Glyph>
+                            </FontIcon>
+                            <Border Width="36" Height="28" CornerRadius="4" Background="#F0F3F7"
+                                    Visibility="{x:Bind HasThumb, Converter={StaticResource BoolToVis}}">
+                                <Image Source="{x:Bind ThumbUrl, Converter={StaticResource UrlToBitmap}}"
+                                       Stretch="UniformToFill"/>
+                            </Border>
+                        </Grid>
+
+                        <TextBlock Grid.Column="1" Text="{x:Bind Name}" TextTrimming="CharacterEllipsis"
+                                   FontSize="14" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" Text="{x:Bind SizeText}" Foreground="#888"
+                                   FontSize="12" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="3" Text="{x:Bind DeleteTimeText}" Foreground="#888"
+                                   FontSize="12" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="4" Text="{x:Bind KeepText}" Foreground="#C46A00"
+                                   FontSize="12" VerticalAlignment="Center"/>
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+    </Grid>
+</Page>

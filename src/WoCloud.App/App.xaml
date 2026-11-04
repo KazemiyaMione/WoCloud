@@ -1,0 +1,22 @@
+<Application
+    x:Class="WoCloud.App.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+            </ResourceDictionary.MergedDictionaries>
+            <!-- 云盘蓝主题 -->
+            <SolidColorBrush x:Key="WoCloudBlueBrush" Color="#0F6CBD" />
+            <SolidColorBrush x:Key="WoCloudSkyBrush" Color="#2899F5" />
+            <x:Double x:Key="CardCornerRadius">10</x:Double>
+            <converters:BoolToVisConverter x:Key="BoolToVis" xmlns:converters="using:WoCloud.App.Views"/>
+            <converters:NullToVisConverter x:Key="NullToVis" xmlns:converters="using:WoCloud.App.Views"/>
+            <converters:BoolToVisCollapsedConverter x:Key="BoolToVisCollapsed" xmlns:converters="using:WoCloud.App.Views"/>
+            <converters:UrlToBitmapConverter x:Key="UrlToBitmap" xmlns:converters="using:WoCloud.App.Views"/>
+            <converters:HexToBrushConverter x:Key="HexToBrush" xmlns:converters="using:WoCloud.App.Views"/>
+            <converters:StringToVisConverter x:Key="StringToVis" xmlns:converters="using:WoCloud.App.Views"/>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
