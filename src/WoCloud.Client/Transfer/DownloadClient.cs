@@ -52,7 +52,13 @@ public sealed class DownloadClient : IDisposable
             throw new InvalidOperationException("下载直链列表为空");
         var url = urls[0].DownloadUrl;
 
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(targetPath))!);
+        // 云端文件名可能带 Windows 非法字符：结尾的点/空格会让 FileStream 报「拒绝访问」，
+        // 引号/竖线等直接抛 NotSupportedException。统一清洗后再落盘。
+        var dir = Path.GetDirectoryName(Path.GetFullPath(targetPath))!;
+        var fileName = SanitizeFileName(Path.GetFileName(targetPath));
+        targetPath = Path.Combine(dir, fileName);
+
+        Directory.CreateDirectory(dir);
         var partPath = targetPath + ".part";
         if (!ResumeEnabled)
         {
@@ -139,4 +145,21 @@ public sealed class DownloadClient : IDisposable
     }
 
     public void Dispose() => _http.Dispose();
+
+    /// <summary>
+    /// 清洗文件名使其可安全落盘：替换 Windows 非法字符（<c>\ / : * ? " &lt; &gt; |</c> 及控制符），
+    /// 去掉结尾的点/空格（这两者不会被 GetInvalidFileNameChars 命中，但 FileStream 会报「拒绝访问」）。
+    /// </summary>
+    public static string SanitizeFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var buf = new char[name.Length];
+        for (var i = 0; i < name.Length; i++)
+        {
+            var c = name[i];
+            buf[i] = Array.IndexOf(invalid, c) >= 0 || char.IsControl(c) ? '_' : c;
+        }
+        var cleaned = new string(buf).TrimEnd('.', ' ');
+        return cleaned.Length > 0 ? cleaned : "未命名文件";
+    }
 }

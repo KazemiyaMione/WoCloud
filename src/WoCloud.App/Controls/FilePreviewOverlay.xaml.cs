@@ -319,7 +319,8 @@ public sealed partial class FilePreviewOverlay : UserControl
         {
             var temp = Path.Combine(Path.GetTempPath(), "WoCloud", "preview");
             Directory.CreateDirectory(temp);
-            var target = Path.Combine(temp, Current.Name);
+            // 与 DownloadClient 落盘清洗保持一致，否则文件名带非法字符时打开找不到文件
+            var target = Path.Combine(temp, DownloadClient.SanitizeFileName(Current.Name));
             var downloads = App.Current.Services.GetRequiredService<DownloadClient>();
             await downloads.DownloadAsync(Current.Fid, target,
                 spaceType: _spaceType, familyId: _familyId, psToken: _psToken);
