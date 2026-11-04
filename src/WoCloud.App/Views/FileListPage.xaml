@@ -119,9 +119,7 @@
                     <MenuFlyoutSeparator/>
                     <MenuFlyoutItem Text="移动到…" Click="Move_Click"/>
                     <MenuFlyoutItem Text="复制到…" Click="Copy_Click"/>
-                    <MenuFlyoutItem x:Name="MoveInPrivateItem" Text="移入私密空间" Click="MoveToPrivate_Click"/>
-                    <MenuFlyoutItem x:Name="MoveOutPrivateItem" Text="移出私密空间（到个人云）"
-                                    Click="MoveOutPrivate_Click" Visibility="Collapsed"/>
+                    <MenuFlyoutItem Text="移入私密空间" Click="MoveToPrivate_Click"/>
                     <MenuFlyoutSeparator/>
                     <MenuFlyoutItem Text="预览" Click="Preview_Click"/>
                     <MenuFlyoutSeparator/>

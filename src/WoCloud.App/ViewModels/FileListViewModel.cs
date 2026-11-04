@@ -4,7 +4,6 @@ using CommunityToolkit.Mvvm.Input;
 using WoCloud.Client.Files;
 using WoCloud.Client.Models;
 using WoCloud.Client.Share;
-using WoCloud.Client.Space;
 using WoCloud.Client.Transfer;
 
 namespace WoCloud.App.ViewModels;
@@ -67,22 +66,20 @@ public partial class FileListViewModel : ObservableObject
 
     private string _currentDir = "0";
 
-    /// <summary>可选空间（个人云 / 家庭云 / 校园云 / 私密空间）。</summary>
+    /// <summary>可选空间（个人云 / 家庭云 / 校园云）。私密空间不在此切换，走左侧独立页。</summary>
     public ObservableCollection<SpaceOption> Spaces { get; } =
     [
         new("个人云", "0", null),
         new("校园云", "3", null),
-        new("私密空间", "4", null),
     ];
 
     [ObservableProperty] private SpaceOption? _selectedSpace;
 
     private readonly WoCloud.Client.Core.SessionState _session;
-    private readonly PrivateSpaceApi _privateSpace;
 
     public FileListViewModel(FileApi files, DownloadClient downloads, UploadClient uploads,
         ShareApi shares, WoCloud.Client.Misc.MiscApi misc,
-        WoCloud.Client.Core.SessionState session, PrivateSpaceApi privateSpace)
+        WoCloud.Client.Core.SessionState session)
     {
         _files = files;
         _downloads = downloads;
@@ -90,10 +87,9 @@ public partial class FileListViewModel : ObservableObject
         _shares = shares;
         _misc = misc;
         _session = session;
-        _privateSpace = privateSpace;
     }
 
-    /// <summary>加载家庭云群组到空间下拉框（插在校园云之前，私密空间保持在末尾）。</summary>
+    /// <summary>加载家庭云群组到空间下拉框（插在校园云之前）。</summary>
     public async Task LoadSpacesAsync()
     {
         try
@@ -110,25 +106,7 @@ public partial class FileListViewModel : ObservableObject
         catch { /* 家庭云不可用时静默降级 */ }
     }
 
-    /// <summary>当前是否在私密空间视图。</summary>
-    public bool IsPrivateSpace => CurrentSpaceType == "4";
-
-    /// <summary>私密空间是否已解锁（本地持有 psToken）。</summary>
-    public bool IsPrivateUnlocked => !string.IsNullOrEmpty(_session.PsToken);
-
-    /// <summary>解锁私密空间；失败返回错误信息，成功返回 null。</summary>
-    public async Task<string?> UnlockPrivateAsync(string password)
-    {
-        try
-        {
-            var r = await _privateSpace.LoginAsync(password);
-            if (r is { IsPass: "1", PsToken.Length: > 0 }) return null;
-            return r?.Desc is { Length: > 0 } d ? d : "密码错误";
-        }
-        catch (Exception e) { return e.Message; }
-    }
-
-    /// <summary>切换空间（个人云 / 家庭云 / 校园云 / 私密空间）。</summary>
+    /// <summary>切换空间（个人云 / 家庭云 / 校园云）。</summary>
     public async Task SwitchSpaceAsync(SpaceOption? space)
     {
         if (space is null) return;
@@ -401,7 +379,8 @@ public partial class FileListViewModel : ObservableObject
             finally { gate.Release(); }
         })).ToArray();
 
-        await Task.WhenAll(tasks).ConfigureAwait(false);
+        // 不用 ConfigureAwait(false)：后续 LoadAsync 触发 UI 绑定，必须回到 UI 线程
+        await Task.WhenAll(tasks);
         await LoadAsync();
     }
 
@@ -489,7 +468,8 @@ public partial class FileListViewModel : ObservableObject
             finally { gate.Release(); }
         })).ToArray();
 
-        await Task.WhenAll(tasks).ConfigureAwait(false);
+        // 同上：保持 UI 上下文，避免后续 StatusText/列表更新跨线程
+        await Task.WhenAll(tasks);
         return (ok, fail);
     }
 
@@ -532,19 +512,6 @@ public partial class FileListViewModel : ObservableObject
         {
             StatusText = (copy ? "复制失败：" : "移动失败：") + e.Message;
         }
-    }
-
-    /// <summary>移出私密空间到个人云根目录（MoveInOrOutPrivateSpace moveType=1）。</summary>
-    public async Task MoveOutOfPrivateAsync(CloudFile file)
-    {
-        try
-        {
-            if (file.IsDirectory) await _privateSpace.MoveOutAsync(null, [file.Id]);
-            else await _privateSpace.MoveOutAsync([file.Id], null);
-            StatusText = "已移出到「个人云」根目录";
-            await LoadAsync();
-        }
-        catch (Exception e) { StatusText = "移出失败：" + e.Message; }
     }
 
     /// <summary>创建分享（默认 7 天、系统提取码；fileIds 为文件 id 逗号串）。</summary>
