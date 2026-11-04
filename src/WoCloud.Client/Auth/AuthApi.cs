@@ -67,13 +67,9 @@ public sealed class AuthApi
             clientId = _session.ClientId,
             param = CryptoHelper.Encrypt(JsonSerializer.Serialize(inner, JsonOpts), _session.ClientSecret),
         };
-        var (ok, code, data) = await PostRawJsonAsync(WoCloudConstants.SendMessageCodeUrl, body, ct).ConfigureAwait(false);
+        var (ok, code, message, _) = await PostRawJsonAsync(WoCloudConstants.SendMessageCodeUrl, body, ct).ConfigureAwait(false);
         if (ok) return true;
-        var desc = "短信发送失败";
-        if (data is { } dd && dd.ValueKind == JsonValueKind.Object &&
-            dd.TryGetProperty("RSP_DESC", out var rd) && rd.ValueKind == JsonValueKind.String)
-            desc = rd.GetString() ?? desc;
-        throw new WoCloudException(code ?? "SMS_ERR", desc);
+        throw new WoCloudException(code ?? "SMS_ERR", message ?? "短信发送失败");
     }
 
     // ---------- 登录通道 ----------
@@ -239,7 +235,7 @@ public sealed class AuthApi
     }
 
     /// <summary>裸 JSON POST（sendMessageCodeBase），带 X-YP 头。</summary>
-    private async Task<(bool Ok, string? Code, JsonElement? Data)> PostRawJsonAsync(
+    private async Task<(bool Ok, string? Code, string? Message, JsonElement? Data)> PostRawJsonAsync(
         string url, object body, CancellationToken ct)
     {
         using var msg = new HttpRequestMessage(HttpMethod.Post, url)
@@ -252,18 +248,58 @@ public sealed class AuthApi
         msg.Headers.TryAddWithoutValidation("client-id", _session.ClientId);
         using var resp = await _http.SendAsync(msg, ct).ConfigureAwait(false);
         var text = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        return ParseRawEnvelope(text);
+    }
+
+    /// <summary>
+    /// 解析裸接口响应。两种形态并存：
+    /// 1. BFF：<c>{"meta":{"code":"200"},"result":…}</c>
+    /// 2. api-user 裸接口：<c>{"STATUS":"200","RSP":{"RSP_CODE":"0000","RSP_DESC":"…","DATA":…}}</c>
+    /// sendMessageCodeBase 属于第 2 种——之前只认 meta，导致「短信已收到却提示发送失败」。
+    /// </summary>
+    internal static (bool Ok, string? Code, string? Message, JsonElement? Data) ParseRawEnvelope(string text)
+    {
         try
         {
             using var doc = JsonDocument.Parse(text);
             var root = doc.RootElement;
-            var metaCode = root.TryGetProperty("meta", out var meta) &&
-                           meta.TryGetProperty("code", out var mc) ? mc.GetString() : null;
-            JsonElement? result = root.TryGetProperty("result", out var r) ? r.Clone() : null;
-            return (metaCode == "200", metaCode, result);
+
+            if (root.TryGetProperty("meta", out var meta) &&
+                meta.TryGetProperty("code", out var mc))
+            {
+                var metaCode = mc.GetString();
+                JsonElement? result = root.TryGetProperty("result", out var r) ? r.Clone() : null;
+
+                // message 可能挂在根上，也可能挂在 meta 里
+                string? metaMsg = null;
+                foreach (var holder in new[] { root, meta })
+                {
+                    if (holder.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String)
+                    {
+                        metaMsg = m.GetString();
+                        break;
+                    }
+                }
+                return (metaCode == "200", metaCode, metaMsg, result);
+            }
+
+            if (root.TryGetProperty("RSP", out var rsp) && rsp.ValueKind == JsonValueKind.Object)
+            {
+                string? Str(string name) =>
+                    rsp.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
+                JsonElement? payload = rsp.TryGetProperty("DATA", out var dd) && dd.ValueKind != JsonValueKind.Null
+                    ? dd.Clone() : null;
+
+                var code = Str("RSP_CODE");
+                return (code == "0000", code, Str("RSP_DESC"), payload);
+            }
+
+            return (false, "BAD_SHAPE", "响应格式异常", null);
         }
         catch (JsonException)
         {
-            return (false, "BAD_JSON", null);
+            return (false, "BAD_JSON", "响应不是合法 JSON", null);
         }
     }
 

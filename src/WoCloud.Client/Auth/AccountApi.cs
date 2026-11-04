@@ -26,7 +26,7 @@ public sealed class AccountApi
     }
 
     /// <summary>修改个人资料（昵称 / 性别 / 生日 / 头像地址）。</summary>
-    /// <param name="sex">"1"=男 "2"=女（服务端要求非空）</param>
+    /// <param name="sex">中文「男」或「女」；实测传 "1"/"2" 会返回 1000 参数错误</param>
     /// <param name="birthdayMs">生日毫秒时间戳</param>
     public Task UpdateProfileAsync(string userName, string sex, long birthdayMs, string? headUrl,
         CancellationToken ct = default) =>

@@ -29,8 +29,9 @@
         <TextBox x:Name="NameBox" Header="昵称" MaxLength="20" PlaceholderText="请输入昵称"/>
 
         <ComboBox x:Name="SexBox" Header="性别" HorizontalAlignment="Stretch" PlaceholderText="请选择">
-            <ComboBoxItem Content="男" Tag="1"/>
-            <ComboBoxItem Content="女" Tag="2"/>
+            <!-- 服务端 sex 字段要中文「男 / 女」，传 "1"/"2" 会返回 1000 参数错误 -->
+            <ComboBoxItem Content="男" Tag="男"/>
+            <ComboBoxItem Content="女" Tag="女"/>
         </ComboBox>
 
         <DatePicker x:Name="BirthdayPicker" Header="生日" HorizontalAlignment="Stretch"/>

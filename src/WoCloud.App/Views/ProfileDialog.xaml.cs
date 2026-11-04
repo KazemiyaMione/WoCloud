@@ -48,9 +48,12 @@ public sealed partial class ProfileDialog : ContentDialog
         _headUrl = _user.HeadUrl ?? "";
         await ShowAvatarAsync(_headUrl);
 
-        SexBox.SelectedIndex = _user.Sex switch { "1" => 0, "2" => 1, _ => -1 };
+        // 服务端存的是中文「男 / 女」
+        SexBox.SelectedIndex = _user.Sex switch { "男" => 0, "女" => 1, _ => -1 };
+
+        // 未设置过生日时给个占位日期（服务端要求 birthday 非空）
         BirthdayPicker.Date = long.TryParse(_user.Birthday, out var ms) && ms > 0
-            ? DateTimeOffset.FromUnixTimeMilliseconds(ms)
+            ? DateTimeOffset.FromUnixTimeMilliseconds(ms).ToLocalTime()
             : new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.Zero);
     }
 
@@ -145,6 +148,14 @@ public sealed partial class ProfileDialog : ContentDialog
         {
             args.Cancel = true;
             ShowError("请选择性别");
+            return;
+        }
+
+        // 服务端把 headUrl 当必填项，没头像时先传一张
+        if (string.IsNullOrWhiteSpace(_headUrl))
+        {
+            args.Cancel = true;
+            ShowError("请先上传头像再保存");
             return;
         }
 
